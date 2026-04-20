@@ -132,6 +132,10 @@
     return _serviceEngine->isSyncing();
 }
 
+- (BOOL)isPhase2Pending {
+    return _serviceEngine->isPhase2Pending();
+}
+
 // ═══════════════════════════════════════════════════════
 //  Lifecycle — forward to ServiceEngine, wrap callbacks to main queue
 // ═══════════════════════════════════════════════════════
