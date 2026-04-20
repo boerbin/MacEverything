@@ -216,10 +216,17 @@ struct HighlightedSearchField: NSViewRepresentable {
         // Update text if externally changed (e.g., clear button, ghost suggestion accept)
         if textView.string != text {
             context.coordinator.isUpdatingFromSwiftUI = true
-            let selectedRanges = textView.selectedRanges
+            let oldLength = textView.string.count
             textView.string = text
             context.coordinator.applyHighlighting(textView)
-            textView.selectedRanges = selectedRanges
+            // If text grew (e.g., ghost suggestion accepted), move cursor to end;
+            // otherwise keep cursor at a safe position within the new text bounds.
+            if text.count > oldLength {
+                textView.setSelectedRange(NSRange(location: text.count, length: 0))
+            } else {
+                let safePos = min(oldLength, text.count)
+                textView.setSelectedRange(NSRange(location: safePos, length: 0))
+            }
             context.coordinator.isUpdatingFromSwiftUI = false
         }
 
