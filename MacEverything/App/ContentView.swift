@@ -68,10 +68,14 @@ struct ContentView: View {
                     Text("Scanning... \(viewModel.scannedCount) items scanned")
                         .foregroundColor(.secondary)
                 } else if viewModel.scanComplete {
-                    if viewModel.isSyncing {
+                    if viewModel.isSyncing || viewModel.isBuildingIndex {
                         ProgressView()
                             .controlSize(.small)
-                        Text("Syncing...")
+                        Text(viewModel.isSyncing && viewModel.isBuildingIndex
+                             ? "Syncing & building index..."
+                             : viewModel.isBuildingIndex
+                             ? "Building index..."
+                             : "Syncing...")
                             .foregroundColor(.orange)
                     } else if viewModel.isMonitoring {
                         Circle()

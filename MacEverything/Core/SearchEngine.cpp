@@ -348,10 +348,12 @@ uint32_t SearchEngine::addRecord(FileRecord&& record) {
     pathIndices_.push_back(pIdx);
     pathIndex_[lowerFull] = idx;
 
-    // Update trigram index
-    addTrigramsForRecord(idx, namePool_.data(idx), namePool_.length(idx));
-    addPathTrigramsForRecord(idx);
-    addExtensionForRecord(idx);
+    // Update trigram index (skip during Phase 2 — completePhase2 replay handles it)
+    if (!phase2Pending_.load(std::memory_order_relaxed)) {
+        addTrigramsForRecord(idx, namePool_.data(idx), namePool_.length(idx));
+        addPathTrigramsForRecord(idx);
+        addExtensionForRecord(idx);
+    }
 
     // Dirty page tracking
     if (idx / kRecordsPerPage >= dirtyPages_.size()) {
@@ -479,9 +481,11 @@ uint32_t SearchEngine::batchRescanPrefix(const std::string& pathPrefix,
         namePool_.append(lower);
         pathIndices_.push_back(pIdx);
         pathIndex_[me::toLower(fullPath)] = newIdx;
-        addTrigramsForRecord(newIdx, namePool_.data(newIdx), namePool_.length(newIdx));
-        addPathTrigramsForRecord(newIdx);
-        addExtensionForRecord(newIdx);
+        if (!phase2Pending_.load(std::memory_order_relaxed)) {
+            addTrigramsForRecord(newIdx, namePool_.data(newIdx), namePool_.length(newIdx));
+            addPathTrigramsForRecord(newIdx);
+            addExtensionForRecord(newIdx);
+        }
         if (newIdx / kRecordsPerPage >= dirtyPages_.size()) {
             dirtyPages_.resize(newIdx / kRecordsPerPage + 1, false);
         }
@@ -531,9 +535,11 @@ void SearchEngine::updateByPathUnlocked(const std::string& fullPath, FileRecord&
     namePool_.append(lower);
     pathIndices_.push_back(pIdx);
     pathIndex_[me::toLower(newFullPath)] = newIdx;
-    addTrigramsForRecord(newIdx, namePool_.data(newIdx), namePool_.length(newIdx));
-    addPathTrigramsForRecord(newIdx);
-    addExtensionForRecord(newIdx);
+    if (!phase2Pending_.load(std::memory_order_relaxed)) {
+        addTrigramsForRecord(newIdx, namePool_.data(newIdx), namePool_.length(newIdx));
+        addPathTrigramsForRecord(newIdx);
+        addExtensionForRecord(newIdx);
+    }
     if (newIdx / kRecordsPerPage >= dirtyPages_.size()) {
         dirtyPages_.resize(newIdx / kRecordsPerPage + 1, false);
     }

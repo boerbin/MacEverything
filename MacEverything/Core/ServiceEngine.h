@@ -65,6 +65,7 @@ public:
     bool isScanning() const  { return isScanning_.load(std::memory_order_relaxed); }
     bool isMonitoring() const { return isMonitoring_.load(std::memory_order_relaxed); }
     bool isSyncing() const   { return isSyncing_.load(std::memory_order_relaxed); }
+    bool isPhase2Pending() const;
 
     uint32_t recordCount();
     uint32_t liveRecordCount();

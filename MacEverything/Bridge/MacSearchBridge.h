@@ -122,6 +122,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Whether background sync is in progress (index is searchable but may be stale).
 @property (nonatomic, readonly) BOOL isSyncing;
 
+/// Whether Phase 2 trigram index build is still in progress.
+@property (nonatomic, readonly) BOOL isPhase2Pending;
+
 // --- HTTP Server ---
 
 /// Start the embedded HTTP API server on the given port (127.0.0.1 only).

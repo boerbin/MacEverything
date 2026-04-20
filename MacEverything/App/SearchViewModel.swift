@@ -39,6 +39,7 @@ class SearchViewModel: ObservableObject {
     @Published var contentIndexProgress: (indexed: UInt32, total: UInt32)?
     @Published var contentIndexedCount: UInt32 = 0
     @Published var isSyncing: Bool = false
+    @Published var isBuildingIndex: Bool = false
     @Published var ghostSuggestion: String? = nil
 
     /// Structured highlight hints extracted from the C++ query AST.
@@ -160,6 +161,7 @@ class SearchViewModel: ObservableObject {
                 self.scanComplete = true
                 self.isMonitoring = self.bridge.isMonitoring
                 self.isSyncing = self.bridge.isSyncing
+                self.isBuildingIndex = self.bridge.isPhase2Pending
 
                 if !self.searchText.isEmpty {
                     self.performSearch(self.searchText)
@@ -431,6 +433,7 @@ class SearchViewModel: ObservableObject {
         totalRecords = bridge.liveRecordCount()
         isMonitoring = bridge.isMonitoring
         isSyncing = bridge.isSyncing
+        isBuildingIndex = bridge.isPhase2Pending
         contentIndexedCount = bridge.contentIndexedFileCount()
 
         // Skip expensive search/query when app is not focused.

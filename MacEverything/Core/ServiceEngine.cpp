@@ -79,6 +79,11 @@ uint32_t ServiceEngine::liveRecordCount() {
     return engine ? engine->liveRecordCount() : 0;
 }
 
+bool ServiceEngine::isPhase2Pending() const {
+    auto engine = const_cast<ServiceEngine*>(this)->safeEngine();
+    return engine ? engine->isPhase2Pending() : false;
+}
+
 // ═══════════════════════════════════════════════════════
 //  Metadata builder (pure C++ — no NSProcessInfo)
 // ═══════════════════════════════════════════════════════
@@ -223,6 +228,8 @@ void ServiceEngine::startIncremental(StartupCallback completion) {
                     if (this->shuttingDown_.load(std::memory_order_acquire)) return;
                     auto eng = this->safeEngine();
                     if (eng) eng->completePhase2();
+                    // Notify observers so search results refresh with the full index
+                    if (this->onIndexChanged) this->onIndexChanged();
                 });
             }
 
