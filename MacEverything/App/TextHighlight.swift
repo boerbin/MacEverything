@@ -357,7 +357,9 @@ func highlightCrossMatches(path: String, name: String, hints: [HighlightHint],
         case .path:
             pathRanges.append(contentsOf: computeRangesForHint(in: path, hint: hint))
         case .any:
-            if hint.matchMode == .substring && hint.text.contains("/") {
+            if hint.matchMode == .regex || (hint.matchMode == .substring && hint.text.contains("/")) {
+                // Regex can match across path/name boundary, and substring with "/"
+                // needs cross-boundary matching — run against full path then map back.
                 let fullPath = path + "/" + name
                 let fullRanges = computeRangesForHint(in: fullPath, hint: hint)
                 let (pRanges, nRanges) = mapFullPathRanges(fullRanges,
