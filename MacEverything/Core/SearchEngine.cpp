@@ -555,12 +555,20 @@ void SearchEngine::updateByPath(const std::string& fullPath, FileRecord&& update
 
 void SearchEngine::batchMutate(std::vector<MutationOp>&& ops) {
     if (ops.empty()) return;
-    std::unique_lock lock(mutex_);
-    for (auto& op : ops) {
-        if (op.type == MutationOp::REMOVE) {
-            removeByPathUnlocked(op.path);
-        } else {
-            updateByPathUnlocked(op.path, std::move(op.record));
+
+    constexpr size_t kChunkSize = 300;
+    const size_t total = ops.size();
+
+    for (size_t offset = 0; offset < total; offset += kChunkSize) {
+        const size_t end = std::min(offset + kChunkSize, total);
+        std::unique_lock lock(mutex_);
+        for (size_t i = offset; i < end; ++i) {
+            auto& op = ops[i];
+            if (op.type == MutationOp::REMOVE) {
+                removeByPathUnlocked(op.path);
+            } else {
+                updateByPathUnlocked(op.path, std::move(op.record));
+            }
         }
     }
 }
