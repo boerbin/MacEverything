@@ -18,6 +18,7 @@
 #include "MacEverything/Core/QueryTokenizer.h"
 #include "MacEverything/Core/QueryParser.h"
 #include "MacEverything/Core/QueryFilterParser.h"
+#include "MacEverything/Core/EmbeddingIndex.h"
 #include <chrono>
 #include <iostream>
 #include <iomanip>
@@ -124,6 +125,7 @@ namespace fs = std::filesystem;
 #include "tests/test_fsevents_search_latency.h"
 #include "tests/test_batch_split.h"
 #include "tests/test_litellm_client.h"
+#include "tests/test_embedding_index.h"
 
 // ═══════════════════════════════════════════════════════
 //  Main
@@ -191,7 +193,8 @@ static void printUsage(const char* prog) {
     std::cout << "  75 (RE2 integration),\n";
     std::cout << "  76 (FSEvents search latency),\n";
     std::cout << "  77 (batch split),\n";
-    std::cout << "  78 (LiteLLM client)\n";
+    std::cout << "  78 (LiteLLM client),\n";
+    std::cout << "  79 (embedding index)\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -341,6 +344,7 @@ int main(int argc, char* argv[]) {
     if (selectedParts.count("76")) runFSEventsSearchLatencyTest();
     if (selectedParts.count("77")) runBatchSplitTests();
     if (selectedParts.count("78")) runLiteLLMClientTests();
+    if (selectedParts.count("79")) runEmbeddingIndexTests();
 
     // ── Final Summary ──
     std::cout << "╔══════════════════════════════════════════╗\n";
