@@ -38,6 +38,10 @@
 		A1000032 /* HighlightHint.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000046; };
 		A1000033 /* SearchEngineV6.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000047; };
 		A1000034 /* FlatIndexWriter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000049; };
+		A1000035 /* AIServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200004A; };
+		A1000036 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000051; };
+		A1000037 /* OllamaSetupHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000052; };
+		A1000038 /* OllamaSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000053; };
 		A100001A /* StringUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000028; };
 		A100001B /* Logger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A200002A; };
 		A100001C /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002B; };
@@ -149,7 +153,11 @@
 		A2000047 /* SearchEngineV6.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SearchEngineV6.cpp; sourceTree = "<group>"; };
 		A2000048 /* FlatIndexWriter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FlatIndexWriter.h; sourceTree = "<group>"; };
 		A2000049 /* FlatIndexWriter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FlatIndexWriter.cpp; sourceTree = "<group>"; };
+		A200004A /* AIServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIServiceClient.swift; sourceTree = "<group>"; };
 		A2000043 /* SearchOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchOptions.swift; sourceTree = "<group>"; };
+		A2000051 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
+		A2000052 /* OllamaSetupHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaSetupHelper.swift; sourceTree = "<group>"; };
+		A2000053 /* OllamaSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaSetupView.swift; sourceTree = "<group>"; };
 		B2000001 /* MacEverythingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacEverythingUITests.swift; sourceTree = "<group>"; };
 		B2000002 /* MacEverythingUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacEverythingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2000001 /* mcp_main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mcp_main.cpp; sourceTree = "<group>"; };
@@ -271,6 +279,10 @@
 				D2000001 /* MCPConfigManager.swift */,
 				A2000043 /* SearchOptions.swift */,
 				A2000045 /* SearchSyntaxHelpView.swift */,
+				A200004A /* AIServiceClient.swift */,
+				A2000051 /* AISettingsView.swift */,
+				A2000052 /* OllamaSetupHelper.swift */,
+				A2000053 /* OllamaSetupView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -485,10 +497,14 @@
 				A1000023 /* ServiceEngine+FSEvents.cpp in Sources */,
 				A1000024 /* ServiceEngine+Content.cpp in Sources */,
 				D1000001 /* MCPConfigManager.swift in Sources */,
+				A1000035 /* AIServiceClient.swift in Sources */,
 				A1000027 /* QueryParser.cpp in Sources */,
 				A1000028 /* SearchEngineAdvancedQuery.cpp in Sources */,
 				A1000029 /* SearchEngineStructuredQuery.cpp in Sources */,
 				A100002A /* SearchOptions.swift in Sources */,
+				A1000036 /* AISettingsView.swift in Sources */,
+				A1000037 /* OllamaSetupHelper.swift in Sources */,
+				A1000038 /* OllamaSetupView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

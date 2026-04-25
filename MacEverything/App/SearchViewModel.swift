@@ -42,6 +42,13 @@ class SearchViewModel: ObservableObject {
     @Published var isBuildingIndex: Bool = false
     @Published var ghostSuggestion: String? = nil
 
+    @Published var aiModeEnabled = false
+    @Published var aiTranslatedQuery: String?
+    @Published var aiIsTranslating = false
+    @Published var aiError: String?
+    @Published var aiServiceAvailable = false
+    @Published var showOllamaSetup = false
+
     /// Structured highlight hints extracted from the C++ query AST.
     /// Replaces the old keyword-based approach with field-aware, mode-aware hints.
     var highlightHints: [HighlightHint] {
@@ -258,10 +265,17 @@ class SearchViewModel: ObservableObject {
             contentKeyword = "" // H-9: reset cached keyword
 
             searchTask = Task { @MainActor in
-                // 80ms debounce
-                try? await Task.sleep(nanoseconds: 80_000_000)
-                guard !Task.isCancelled else { return }
-                performSearch(text)
+                if self.aiModeEnabled {
+                    // 500ms debounce for AI mode (LLM inference takes time anyway)
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    guard !Task.isCancelled else { return }
+                    self.performAISearch(text)
+                } else {
+                    // 80ms debounce
+                    try? await Task.sleep(nanoseconds: 80_000_000)
+                    guard !Task.isCancelled else { return }
+                    self.performSearch(text)
+                }
             }
         }
 
@@ -455,6 +469,55 @@ class SearchViewModel: ObservableObject {
 
     // H-9: Cached to avoid recomputing lowercased() + hasPrefix on every access
     private(set) var contentKeyword: String = ""
+
+    // MARK: - AI search mode
+
+    func checkAIServiceAvailability() {
+        Task {
+            let available = await AIServiceClient.shared.isAvailable()
+            self.aiServiceAvailable = available
+            if !available {
+                let ollamaRunning = await OllamaSetupHelper.isOllamaRunning()
+                if !ollamaRunning {
+                    self.showOllamaSetup = true
+                }
+            }
+        }
+    }
+
+    func performAISearch(_ text: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        aiIsTranslating = true
+        aiError = nil
+        aiTranslatedQuery = nil
+
+        Task {
+            do {
+                let response = try await AIServiceClient.shared.translateStream(
+                    query: text,
+                    onToken: { [weak self] token in
+                        Task { @MainActor in
+                            self?.aiTranslatedQuery = (self?.aiTranslatedQuery ?? "") + token
+                        }
+                    }
+                )
+                self.aiIsTranslating = false
+                if response.success {
+                    self.aiTranslatedQuery = response.translatedQuery
+                    self.performSearch(response.translatedQuery)
+                } else {
+                    self.aiError = response.error
+                    self.performSearch(text)
+                }
+            } catch {
+                self.aiIsTranslating = false
+                self.aiError = "AI service unavailable"
+                self.performSearch(text)
+            }
+        }
+    }
 
     // MARK: - Ghost text autocomplete
 

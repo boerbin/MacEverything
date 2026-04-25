@@ -6,6 +6,48 @@ struct ContentView: View {
     @State private var scrollViewID = 0
     @FocusState private var isSearchFieldFocused: Bool
 
+    @ViewBuilder
+    private var aiTranslationStatusBar: some View {
+        if viewModel.aiModeEnabled {
+            HStack(spacing: 4) {
+                if viewModel.aiIsTranslating {
+                    ProgressView()
+                        .controlSize(.small)
+                    if let partial = viewModel.aiTranslatedQuery {
+                        Text(partial)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.purple.opacity(0.6))
+                            .lineLimit(1)
+                    } else {
+                        Text("Translating...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else if let translated = viewModel.aiTranslatedQuery {
+                    Image(systemName: "arrow.right")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text(translated)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.purple)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                } else if let error = viewModel.aiError {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 18)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Permission banner
@@ -34,6 +76,22 @@ struct ContentView: View {
                     viewModel.onSearchTextChanged()
                 }
                 SearchOptionBadges(options: searchOptions)
+                Button(action: {
+                    viewModel.aiModeEnabled.toggle()
+                    if viewModel.aiModeEnabled {
+                        viewModel.checkAIServiceAvailability()
+                    }
+                }) {
+                    Text("AI")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(viewModel.aiModeEnabled ? Color.purple : Color.gray.opacity(0.2))
+                        .foregroundColor(viewModel.aiModeEnabled ? .white : .secondary)
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .help("Toggle AI search mode")
                 if !viewModel.searchText.isEmpty {
                     Button {
                         viewModel.searchText = ""
@@ -57,6 +115,8 @@ struct ContentView: View {
             )
             .padding(.horizontal, 8)
             .padding(.top, 8)
+
+            aiTranslationStatusBar
 
             Divider()
 
@@ -268,6 +328,9 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 600, minHeight: 400)
+        .sheet(isPresented: $viewModel.showOllamaSetup) {
+            OllamaSetupView()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .rebuildIndex)) { _ in
             viewModel.rebuildIndex()
         }
