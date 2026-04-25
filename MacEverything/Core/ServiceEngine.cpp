@@ -468,8 +468,16 @@ void ServiceEngine::startHttpServer(uint16_t port) {
     }
 
     if (adminCallbacks.onRebuildIndex || adminCallbacks.onRebuildContentIndex) {
+        adminCallbacks.onRebuildSemanticIndex = [this]() { this->rebuildSemanticIndex(); };
         httpServer_->setAdminCallbacks(adminCallbacks);
     }
+
+    httpServer_->setSemanticGetters(
+        [this]() { return this->safeEmbeddingIndex(); },
+        [this]() { return this->safeVectorSearch(); },
+        [this]() { return this->safeLiteLLMClient(); },
+        [this]() { return this->safeNLTranslator(); }
+    );
 }
 
 void ServiceEngine::stopHttpServer() {

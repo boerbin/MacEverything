@@ -42,6 +42,11 @@
 		A1000036 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000051; };
 		A1000037 /* OllamaSetupHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000052; };
 		A1000038 /* OllamaSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000053; };
+		A1000039 /* EmbeddingIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000054; };
+		A100003A /* VectorSearch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000056; };
+		A100003B /* LiteLLMClient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000058; };
+		A100003C /* NLTranslator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A200005A; };
+		A100003D /* ServiceEngine+Semantic.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A200005C; };
 		A100001A /* StringUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000028; };
 		A100001B /* Logger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A200002A; };
 		A100001C /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002B; };
@@ -158,6 +163,15 @@
 		A2000051 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
 		A2000052 /* OllamaSetupHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaSetupHelper.swift; sourceTree = "<group>"; };
 		A2000053 /* OllamaSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaSetupView.swift; sourceTree = "<group>"; };
+		A2000054 /* EmbeddingIndex.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EmbeddingIndex.cpp; sourceTree = "<group>"; };
+		A2000055 /* EmbeddingIndex.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EmbeddingIndex.h; sourceTree = "<group>"; };
+		A2000056 /* VectorSearch.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VectorSearch.cpp; sourceTree = "<group>"; };
+		A2000057 /* VectorSearch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VectorSearch.h; sourceTree = "<group>"; };
+		A2000058 /* LiteLLMClient.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = LiteLLMClient.cpp; sourceTree = "<group>"; };
+		A2000059 /* LiteLLMClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LiteLLMClient.h; sourceTree = "<group>"; };
+		A200005A /* NLTranslator.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = NLTranslator.cpp; sourceTree = "<group>"; };
+		A200005B /* NLTranslator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NLTranslator.h; sourceTree = "<group>"; };
+		A200005C /* ServiceEngine+Semantic.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "ServiceEngine+Semantic.cpp"; sourceTree = "<group>"; };
 		B2000001 /* MacEverythingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacEverythingUITests.swift; sourceTree = "<group>"; };
 		B2000002 /* MacEverythingUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacEverythingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2000001 /* mcp_main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mcp_main.cpp; sourceTree = "<group>"; };
@@ -336,6 +350,15 @@
 				A2000036 /* ServiceEngine.cpp */,
 				A2000037 /* ServiceEngine+FSEvents.cpp */,
 				A2000038 /* ServiceEngine+Content.cpp */,
+				A200005C /* ServiceEngine+Semantic.cpp */,
+				A2000055 /* EmbeddingIndex.h */,
+				A2000054 /* EmbeddingIndex.cpp */,
+				A2000057 /* VectorSearch.h */,
+				A2000056 /* VectorSearch.cpp */,
+				A2000059 /* LiteLLMClient.h */,
+				A2000058 /* LiteLLMClient.cpp */,
+				A200005B /* NLTranslator.h */,
+				A200005A /* NLTranslator.cpp */,
 				A200003B /* QueryParser.cpp */,
 				A200003C /* SearchEngineAdvancedQuery.cpp */,
 				A2000042 /* SearchEngineStructuredQuery.cpp */,
@@ -496,6 +519,11 @@
 				A1000022 /* ServiceEngine.cpp in Sources */,
 				A1000023 /* ServiceEngine+FSEvents.cpp in Sources */,
 				A1000024 /* ServiceEngine+Content.cpp in Sources */,
+				A100003D /* ServiceEngine+Semantic.cpp in Sources */,
+				A1000039 /* EmbeddingIndex.cpp in Sources */,
+				A100003A /* VectorSearch.cpp in Sources */,
+				A100003B /* LiteLLMClient.cpp in Sources */,
+				A100003C /* NLTranslator.cpp in Sources */,
 				D1000001 /* MCPConfigManager.swift in Sources */,
 				A1000035 /* AIServiceClient.swift in Sources */,
 				A1000027 /* QueryParser.cpp in Sources */,
