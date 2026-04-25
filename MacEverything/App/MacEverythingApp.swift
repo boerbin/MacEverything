@@ -131,6 +131,48 @@ class AISetupWindowController {
     }
 }
 
+class AISettingsWindowController {
+    static let shared = AISettingsWindowController()
+    private var window: NSWindow?
+
+    func showWindow() {
+        if let existing = window, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let view = AISettingsView()
+        let hostingController = NSHostingController(rootView: view)
+        let win = NSWindow(contentViewController: hostingController)
+        win.title = "AI Settings"
+        win.styleMask = [.titled, .closable]
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        window = win
+    }
+}
+
+class SemanticSettingsWindowController {
+    static let shared = SemanticSettingsWindowController()
+    private var window: NSWindow?
+
+    func showWindow() {
+        if let existing = window, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let view = SemanticSettingsView()
+        let hostingController = NSHostingController(rootView: view)
+        let win = NSWindow(contentViewController: hostingController)
+        win.title = "Semantic Settings"
+        win.styleMask = [.titled, .closable]
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        window = win
+    }
+}
+
 class SearchSyntaxHelpWindowController {
     static let shared = SearchSyntaxHelpWindowController()
     private var window: NSWindow?

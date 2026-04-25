@@ -20,6 +20,16 @@ struct ContentFileItem: Identifiable {
     let fileType: UInt8
 }
 
+struct SemanticFileItem: Identifiable {
+    let id: String
+    let name: String
+    let path: String
+    let type: UInt8
+    let size: UInt64
+    let modTime: time_t
+    let similarity: Float
+}
+
 @MainActor
 class SearchViewModel: ObservableObject {
     @Published var searchText: String = ""
@@ -42,6 +52,12 @@ class SearchViewModel: ObservableObject {
     @Published var isBuildingIndex: Bool = false
     @Published var ghostSuggestion: String? = nil
     @Published var showAISetup: Bool = false
+    @Published var isAISearch: Bool = false
+    @Published var semanticResults: [SemanticFileItem] = []
+    @Published var isSemanticSearching: Bool = false
+    @Published var semanticIndexedCount: UInt32 = 0
+    @Published var isSemanticIndexing: Bool = false
+    @Published var semanticIndexProgress: (indexed: UInt32, total: UInt32)?
 
     /// Structured highlight hints extracted from the C++ query AST.
     /// Replaces the old keyword-based approach with field-aware, mode-aware hints.
@@ -111,7 +127,27 @@ class SearchViewModel: ObservableObject {
         searchTask?.cancel()
         searchGeneration &+= 1
         bridge.cancelSession(Self.guiSessionId)
-        performSearch(searchText)
+        if isAISearch {
+            performSemanticSearch(searchText)
+        } else {
+            performSearch(searchText)
+        }
+    }
+
+    func toggleAISearch() {
+        if !isAISearch {
+            if !bridge.isLiteLLMAvailable() {
+                showAISetup = true
+                return
+            }
+            isAISearch = true
+        } else {
+            isAISearch = false
+        }
+        semanticResults = []
+        if !searchText.isEmpty {
+            onSearchTextChanged()
+        }
     }
 
     func startIncremental() {
@@ -142,6 +178,21 @@ class SearchViewModel: ObservableObject {
                 if self.isContentSearch && !self.contentKeyword.isEmpty {
                     self.performContentSearch(self.contentKeyword)
                 }
+            }
+        }
+
+        bridge.onSemanticIndexProgress = { [weak self] indexed, total in
+            Task { @MainActor in
+                self?.isSemanticIndexing = true
+                self?.semanticIndexProgress = (indexed, total)
+            }
+        }
+
+        bridge.onSemanticIndexComplete = { [weak self] totalIndexed in
+            Task { @MainActor in
+                self?.isSemanticIndexing = false
+                self?.semanticIndexProgress = nil
+                self?.semanticIndexedCount = totalIndexed
             }
         }
 
@@ -211,6 +262,8 @@ class SearchViewModel: ObservableObject {
             isContentSearch = false
             contentResults = []
             contentKeyword = "" // H-9: reset cached keyword
+            semanticResults = []
+            isSemanticSearching = false
             ghostSuggestion = nil
             settledTask?.cancel()
             // Cancel any in-flight queries for this GUI session
@@ -258,11 +311,19 @@ class SearchViewModel: ObservableObject {
             contentResults = []
             contentKeyword = "" // H-9: reset cached keyword
 
-            searchTask = Task { @MainActor in
-                // 80ms debounce
-                try? await Task.sleep(nanoseconds: 80_000_000)
-                guard !Task.isCancelled else { return }
-                performSearch(text)
+            if isAISearch {
+                searchTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000) // 300ms debounce (AI is heavier)
+                    guard !Task.isCancelled else { return }
+                    performSemanticSearch(text)
+                }
+            } else {
+                searchTask = Task { @MainActor in
+                    // 80ms debounce
+                    try? await Task.sleep(nanoseconds: 80_000_000)
+                    guard !Task.isCancelled else { return }
+                    performSearch(text)
+                }
             }
         }
 
@@ -302,6 +363,37 @@ class SearchViewModel: ObservableObject {
                 self.displayItems = items
                 self.totalMatches = totalCount
                 self.queryTimeMs = elapsed
+            }
+        }
+    }
+
+    private func performSemanticSearch(_ query: String) {
+        let bridge = self.bridge
+        let gen = searchGeneration
+        isSemanticSearching = true
+        displayItems = []
+        Task.detached { [weak self] in
+            let start = CFAbsoluteTimeGetCurrent()
+            let results = bridge.semanticSearch(query, maxResults: 50)
+            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+
+            var items: [SemanticFileItem] = []
+            items.reserveCapacity(results.count)
+            for r in results {
+                items.append(SemanticFileItem(
+                    id: "\(r.path)/\(r.name)",
+                    name: r.name, path: r.path,
+                    type: r.type, size: r.size,
+                    modTime: r.modTime, similarity: r.similarity
+                ))
+            }
+
+            await MainActor.run { [weak self] in
+                guard let self, self.searchGeneration == gen else { return }
+                self.semanticResults = items
+                self.totalMatches = items.count
+                self.queryTimeMs = elapsed
+                self.isSemanticSearching = false
             }
         }
     }
@@ -436,12 +528,13 @@ class SearchViewModel: ObservableObject {
         isSyncing = bridge.isSyncing
         isBuildingIndex = bridge.isPhase2Pending
         contentIndexedCount = bridge.contentIndexedFileCount()
+        semanticIndexedCount = bridge.semanticIndexedCount()
 
-        // Skip expensive search/query when app is not focused.
-        // Results will refresh on focus regain via onWindowFocusChanged.
         guard refreshThrottle.isFocused else { return }
 
-        if !searchText.isEmpty && !isContentSearch {
+        if isAISearch && !searchText.isEmpty && !isContentSearch {
+            performSemanticSearch(searchText)
+        } else if !searchText.isEmpty && !isContentSearch {
             performSearch(searchText)
         } else if isContentSearch && !contentKeyword.isEmpty {
             performContentSearch(contentKeyword)
