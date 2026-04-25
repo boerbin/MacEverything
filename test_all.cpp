@@ -128,6 +128,7 @@ namespace fs = std::filesystem;
 #include "tests/test_embedding_index.h"
 #include "tests/test_vector_search.h"
 #include "tests/test_nl_translator.h"
+#include "tests/test_semantic_perf.h"
 
 // ═══════════════════════════════════════════════════════
 //  Main
@@ -198,7 +199,8 @@ static void printUsage(const char* prog) {
     std::cout << "  78 (LiteLLM client),\n";
     std::cout << "  79 (embedding index),\n";
     std::cout << "  80 (vector search),\n";
-    std::cout << "  81 (NL translator)\n";
+    std::cout << "  81 (NL translator),\n";
+    std::cout << "  82 (semantic perf bench)\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -216,7 +218,7 @@ int main(int argc, char* argv[]) {
             selectedParts.insert({"3", "3b", "3c", "3d", "3e", "5", "7", "7b", "7c", "7d", "7e", "7f", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70", "71", "72", "73", "74", "75", "76", "78", "79", "80", "81"});
         } else if (arg == "--bench") {
             explicitSelection = true;
-            selectedParts.insert({"44", "46"});
+            selectedParts.insert({"44", "46", "82"});
         } else if (arg == "--slow") {
             explicitSelection = true;
             selectedParts.insert({"1", "4", "6"});
@@ -351,6 +353,7 @@ int main(int argc, char* argv[]) {
     if (selectedParts.count("79")) runEmbeddingIndexTests();
     if (selectedParts.count("80")) runVectorSearchTests();
     if (selectedParts.count("81")) runNLTranslatorTests();
+    if (selectedParts.count("82")) runSemanticPerfTests();
 
     // ── Final Summary ──
     std::cout << "╔══════════════════════════════════════════╗\n";
