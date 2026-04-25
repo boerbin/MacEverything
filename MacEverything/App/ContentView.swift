@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
     @StateObject private var viewModel = SearchViewModel()
@@ -95,6 +96,13 @@ struct ContentView: View {
                             .controlSize(.small)
                         Text("Content indexing \(progress.indexed)/\(progress.total)")
                             .foregroundColor(.orange)
+                    }
+                    if viewModel.isSemanticIndexing, let progress = viewModel.semanticIndexProgress {
+                        Text("·")
+                            .foregroundColor(.secondary)
+                        Text("Semantic: \(progress.indexed)/\(progress.total)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
                     }
                     if viewModel.totalMatches > 0 {
                         Text("·")
@@ -265,6 +273,30 @@ struct ContentView: View {
                     }
                     .background(Color(nsColor: .controlBackgroundColor))
                 }
+
+                // Semantic search results (shown alongside traditional results)
+                if !viewModel.semanticResults.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            Text("Semantic Matches")
+                                .font(.caption)
+                                .foregroundColor(.purple)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.purple.opacity(0.1))
+                                .cornerRadius(4)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+
+                        ForEach(viewModel.semanticResults) { result in
+                            SemanticResultRow(item: result)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                        }
+                    }
+                }
             }
         }
         .frame(minWidth: 600, minHeight: 400)
@@ -281,5 +313,78 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didDeminiaturizeNotification)) { _ in
             scrollViewID += 1
         }
+    }
+}
+
+struct SemanticResultRow: View {
+    let item: SemanticFileItem
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(nsImage: FileIconCache.shared.icon(forPath: item.path))
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                    .font(.title3)
+                    .lineLimit(1)
+                Text(item.path)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text(String(format: "%.0f%%", item.similarity * 100))
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.purple))
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovered ? Color.accentColor.opacity(0.12) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .contextMenu {
+            Button("Open") { openFile() }
+            Button("Reveal in Finder") { revealInFinder() }
+            Divider()
+            Button("Copy Path") { copyPath() }
+        }
+        .onTapGesture(count: 2) {
+            if NSEvent.modifierFlags.contains(.command) {
+                revealInFinder()
+            } else {
+                openFile()
+            }
+        }
+    }
+
+    private func openFile() {
+        let url = URL(fileURLWithPath: item.path)
+        if !NSWorkspace.shared.open(url) {
+            NSSound.beep()
+        }
+    }
+
+    private func revealInFinder() {
+        NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
+    }
+
+    private func copyPath() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(item.path, forType: .string)
     }
 }
