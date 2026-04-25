@@ -47,6 +47,7 @@ class SearchViewModel: ObservableObject {
     @Published var aiIsTranslating = false
     @Published var aiError: String?
     @Published var aiServiceAvailable = false
+    @Published var showOllamaSetup = false
 
     /// Structured highlight hints extracted from the C++ query AST.
     /// Replaces the old keyword-based approach with field-aware, mode-aware hints.
@@ -475,6 +476,12 @@ class SearchViewModel: ObservableObject {
         Task {
             let available = await AIServiceClient.shared.isAvailable()
             self.aiServiceAvailable = available
+            if !available {
+                let ollamaRunning = await OllamaSetupHelper.isOllamaRunning()
+                if !ollamaRunning {
+                    self.showOllamaSetup = true
+                }
+            }
         }
     }
 
