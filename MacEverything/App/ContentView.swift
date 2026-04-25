@@ -19,7 +19,7 @@ struct ContentView: View {
                     Image(systemName: viewModel.isAISearch ? "sparkles" : "magnifyingglass")
                         .font(.system(size: 26, weight: .medium))
                         .foregroundColor(viewModel.isAISearch ? .purple : .blue)
-                        .contentTransition(.symbolEffect(.replace))
+                        .animation(.easeInOut(duration: 0.2), value: viewModel.isAISearch)
                 }
                 .buttonStyle(.plain)
                 .help(viewModel.isAISearch ? "Switch to normal search" : "Switch to AI search")
