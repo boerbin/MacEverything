@@ -42,6 +42,21 @@ class SearchViewModel: ObservableObject {
     @Published var isBuildingIndex: Bool = false
     @Published var ghostSuggestion: String? = nil
 
+    // MARK: - AI Mode
+    @Published var aiModeEnabled: Bool = false
+    @Published var aiTranslatedQuery: String? = nil
+    @Published var aiIsTranslating: Bool = false
+    @Published var aiError: String? = nil
+    @Published var aiServiceAvailable: Bool = false
+
+    func checkAIServiceAvailability() {
+        // Stub: will be connected to AI service in integration task
+    }
+
+    func performAISearch(_ query: String) {
+        // Stub: will be connected to AI service in integration task
+    }
+
     /// Structured highlight hints extracted from the C++ query AST.
     /// Replaces the old keyword-based approach with field-aware, mode-aware hints.
     var highlightHints: [HighlightHint] {
