@@ -2,11 +2,88 @@
 // Tests for RichTextExtractor: rich document text extraction
 
 #include "RichTextExtractor.h"
+#include "ContentIndex.h"
 #include <fstream>
 #include <cstdlib>
 #include <filesystem>
 
 namespace fs = std::filesystem;
+
+static void runContentIndexRichDocTests() {
+    std::cout << "── ContentIndex Rich Doc Integration ──\n";
+
+    std::string tmpDir = "/tmp/maceverything_ci_rich_" + std::to_string(getpid());
+    fs::create_directories(tmpDir);
+
+    // Create a minimal PDF
+    {
+        std::string pdf =
+            "%PDF-1.4\n"
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]\n"
+            "   /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n"
+            "4 0 obj\n<< /Length 52 >>\nstream\n"
+            "BT /F1 12 Tf 100 700 Td (ContentIndexRichDoc) Tj ET\n"
+            "endstream\nendobj\n"
+            "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n"
+            "xref\n0 6\n"
+            "0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n"
+            "0000000115 00000 n \n0000000266 00000 n \n0000000368 00000 n \n"
+            "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n441\n%%EOF\n";
+        std::ofstream ofs(tmpDir + "/rich.pdf", std::ios::binary);
+        ofs << pdf;
+    }
+
+    // ContentIndex should index the PDF via RichTextExtractor
+    ContentIndex ci;
+    ci.setExtensions({"pdf"});
+
+    bool indexed = ci.indexFile(0, tmpDir + "/rich.pdf");
+    check(indexed, "ContentIndex: indexFile succeeds for PDF");
+    check(ci.indexedFileCount() == 1, "ContentIndex: PDF is counted as indexed");
+
+    // Query for text within the PDF
+    auto matches = ci.query("contentindexrichdoc");
+    check(!matches.empty(), "ContentIndex: query finds match in indexed PDF");
+
+    // Snippet generation for PDF
+    uint32_t offset = 0;
+    std::string snippet = ContentIndex::generateSnippet(
+        tmpDir + "/rich.pdf", "contentindexrichdoc", offset);
+    if (!snippet.empty()) {
+        std::string lower = snippet;
+        for (auto& c : lower) c = std::tolower(static_cast<unsigned char>(c));
+        check(lower.find("contentindexrichdoc") != std::string::npos,
+              "ContentIndex: snippet contains keyword from PDF");
+    }
+
+    // Test RTF via ContentIndex
+    {
+        std::ofstream ofs(tmpDir + "/rich.rtf");
+        ofs << "{\\rtf1\\ansi {\\fonttbl {\\f0 Helvetica;}}\n"
+            << "\\f0\\fs24 UniqueRTFSearchTerm document.\\par\n}";
+    }
+    ci.setExtensions({"pdf", "rtf"});
+    bool rtfIndexed = ci.indexFile(1, tmpDir + "/rich.rtf");
+    check(rtfIndexed, "ContentIndex: indexFile succeeds for RTF");
+
+    auto rtfMatches = ci.query("uniquertfsearchterm");
+    check(!rtfMatches.empty(), "ContentIndex: query finds match in indexed RTF");
+
+    // Persistence roundtrip: save and reload should preserve rich doc entries
+    std::string savePath = tmpDir + "/ci_rich.bin";
+    check(ci.saveToFile(savePath), "ContentIndex: saveToFile with rich docs");
+
+    ContentIndex ci2;
+    check(ci2.loadFromFile(savePath), "ContentIndex: loadFromFile with rich docs");
+    check(ci2.indexedFileCount() == 2, "ContentIndex: loaded index has 2 files (PDF + RTF)");
+
+    auto reloadMatches = ci2.query("contentindexrichdoc");
+    check(!reloadMatches.empty(), "ContentIndex: reloaded index can query PDF content");
+
+    fs::remove_all(tmpDir);
+}
 
 static void runRichTextExtractorTests() {
     std::cout << "═══ RichTextExtractor Tests ═══\n\n";
@@ -136,5 +213,6 @@ static void runRichTextExtractorTests() {
     std::string unsupported = me::extractRichDocText(tmpDir + "/test.xyz");
 
     fs::remove_all(tmpDir);
+    runContentIndexRichDocTests();
     std::cout << "\n";
 }
