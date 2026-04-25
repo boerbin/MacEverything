@@ -68,6 +68,7 @@
 		A1000053 /* NLTranslator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000076; };
 		A1000054 /* ServiceEngine+Semantic.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000078; };
 		A1000055 /* MacSearchBridge+Semantic.mm in Sources */ = {isa = PBXBuildFile; fileRef = A2000080; };
+		A1000056 /* RichTextExtractor.mm in Sources */ = {isa = PBXBuildFile; fileRef = A2000082; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -177,6 +178,8 @@
 		A2000078 /* ServiceEngine+Semantic.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "ServiceEngine+Semantic.cpp"; sourceTree = "<group>"; };
 		A2000080 /* MacSearchBridge+Semantic.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = "MacSearchBridge+Semantic.mm"; sourceTree = "<group>"; };
 		A2000081 /* MacSearchBridge+Semantic.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MacSearchBridge+Semantic.h"; sourceTree = "<group>"; };
+		A2000082 /* RichTextExtractor.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RichTextExtractor.mm; sourceTree = "<group>"; };
+		A2000083 /* RichTextExtractor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RichTextExtractor.h; sourceTree = "<group>"; };
 		B2000001 /* MacEverythingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacEverythingUITests.swift; sourceTree = "<group>"; };
 		B2000002 /* MacEverythingUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacEverythingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2000001 /* mcp_main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mcp_main.cpp; sourceTree = "<group>"; };
@@ -375,6 +378,8 @@
 				A2000076 /* NLTranslator.cpp */,
 				A2000077 /* NLTranslator.h */,
 				A2000078 /* ServiceEngine+Semantic.cpp */,
+				A2000082 /* RichTextExtractor.mm */,
+				A2000083 /* RichTextExtractor.h */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -543,6 +548,7 @@
 				A1000053 /* NLTranslator.cpp in Sources */,
 				A1000054 /* ServiceEngine+Semantic.cpp in Sources */,
 				A1000055 /* MacSearchBridge+Semantic.mm in Sources */,
+				A1000056 /* RichTextExtractor.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -652,6 +658,10 @@
 				OTHER_LDFLAGS = (
 					"-lre2",
 					"-lsqlite3",
+					"-framework",
+					Quartz,
+					"-framework",
+					AppKit,
 				);
 			};
 			name = Debug;
@@ -688,6 +698,10 @@
 				OTHER_LDFLAGS = (
 					"-lre2",
 					"-lsqlite3",
+					"-framework",
+					Quartz,
+					"-framework",
+					AppKit,
 				);
 			};
 			name = Release;
