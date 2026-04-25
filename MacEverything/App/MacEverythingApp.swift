@@ -45,6 +45,10 @@ struct MacEverythingApp: App {
                     ContentSettingsWindowController.shared.showWindow()
                 }
 
+                Button("Setup AI...") {
+                    AISetupWindowController.shared.showWindow()
+                }
+
                 Divider()
 
                 Menu("MCP Integration") {
@@ -99,6 +103,27 @@ class ShortcutSettingsWindowController {
         let hostingController = NSHostingController(rootView: settingsView)
         let win = NSWindow(contentViewController: hostingController)
         win.title = "Shortcut Settings"
+        win.styleMask = [.titled, .closable]
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        window = win
+    }
+}
+
+class AISetupWindowController {
+    static let shared = AISetupWindowController()
+    private var window: NSWindow?
+
+    func showWindow() {
+        if let existing = window, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let setupView = AISetupView()
+        let hostingController = NSHostingController(rootView: setupView)
+        let win = NSWindow(contentViewController: hostingController)
+        win.title = "AI Setup"
         win.styleMask = [.titled, .closable]
         win.center()
         win.makeKeyAndOrderFront(nil)

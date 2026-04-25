@@ -41,6 +41,7 @@ class SearchViewModel: ObservableObject {
     @Published var isSyncing: Bool = false
     @Published var isBuildingIndex: Bool = false
     @Published var ghostSuggestion: String? = nil
+    @Published var showAISetup: Bool = false
 
     /// Structured highlight hints extracted from the C++ query AST.
     /// Replaces the old keyword-based approach with field-aware, mode-aware hints.

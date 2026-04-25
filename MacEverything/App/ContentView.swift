@@ -268,6 +268,9 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 600, minHeight: 400)
+        .sheet(isPresented: $viewModel.showAISetup) {
+            AISetupView()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .rebuildIndex)) { _ in
             viewModel.rebuildIndex()
         }
