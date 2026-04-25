@@ -13,9 +13,16 @@ struct ContentView: View {
 
             // Search bar (Alfred-style)
             HStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 26, weight: .medium))
-                    .foregroundColor(.blue)
+                Button {
+                    viewModel.toggleAISearch()
+                } label: {
+                    Image(systemName: viewModel.isAISearch ? "sparkles" : "magnifyingglass")
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundColor(viewModel.isAISearch ? .purple : .blue)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
+                .help(viewModel.isAISearch ? "Switch to normal search" : "Switch to AI search")
                 HighlightedSearchField(
                     text: $viewModel.searchText,
                     placeholder: "Search files... (infile: for content search)",
@@ -53,7 +60,7 @@ struct ContentView: View {
             .cornerRadius(10)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.blue, lineWidth: 2)
+                    .stroke(viewModel.isAISearch ? Color.purple : Color.blue, lineWidth: 2)
             )
             .padding(.horizontal, 8)
             .padding(.top, 8)
@@ -94,6 +101,25 @@ struct ContentView: View {
                         ProgressView()
                             .controlSize(.small)
                         Text("Content indexing \(progress.indexed)/\(progress.total)")
+                            .foregroundColor(.orange)
+                    }
+                    if viewModel.isAISearch {
+                        Text("·")
+                            .foregroundColor(.secondary)
+                        Text("AI")
+                            .foregroundColor(.purple)
+                            .fontWeight(.medium)
+                        Text("·")
+                            .foregroundColor(.secondary)
+                        Text("\(viewModel.semanticIndexedCount) vectors")
+                            .foregroundColor(.secondary)
+                    }
+                    if viewModel.isSemanticIndexing, let progress = viewModel.semanticIndexProgress {
+                        Text("·")
+                            .foregroundColor(.secondary)
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Semantic indexing \(progress.indexed)/\(progress.total)")
                             .foregroundColor(.orange)
                     }
                     if viewModel.totalMatches > 0 {
@@ -196,6 +222,61 @@ struct ContentView: View {
                         .background(Color(nsColor: .controlBackgroundColor))
                     }
                 }
+            } else if viewModel.isAISearch && !viewModel.isContentSearch {
+                if viewModel.isSemanticSearching {
+                    VStack(spacing: 8) {
+                        Spacer()
+                        ProgressView()
+                            .controlSize(.large)
+                        Text("Searching...")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                } else if viewModel.semanticResults.isEmpty && !viewModel.searchText.isEmpty && viewModel.scanComplete {
+                    VStack(spacing: 8) {
+                        Spacer()
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 36))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text("No semantic matches")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                } else if !viewModel.semanticResults.isEmpty {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(viewModel.semanticResults) { item in
+                                SemanticResultRow(item: item)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    .id(scrollViewID)
+
+                    if viewModel.totalMatches > 0 {
+                        HStack {
+                            Spacer()
+                            Text("\(viewModel.semanticResults.count) semantic matches")
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                                .padding(8)
+                            Spacer()
+                        }
+                        .background(Color(nsColor: .controlBackgroundColor))
+                    }
+                } else {
+                    VStack {
+                        Spacer()
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 36))
+                            .foregroundColor(.purple.opacity(0.3))
+                        Text("AI search enabled — type to search")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                }
             } else if viewModel.displayItems.isEmpty && !viewModel.searchText.isEmpty && viewModel.scanComplete {
                 VStack {
                     Spacer()
@@ -284,5 +365,32 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didDeminiaturizeNotification)) { _ in
             scrollViewID += 1
         }
+    }
+}
+
+struct SemanticResultRow: View {
+    let item: SemanticFileItem
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                    .font(.body)
+                    .lineLimit(1)
+                Text(item.path)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Text(String(format: "%.0f%%", item.similarity * 100))
+                .font(.caption.monospacedDigit())
+                .foregroundColor(.purple)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.purple.opacity(0.1))
+                .cornerRadius(4)
+        }
+        .padding(.vertical, 4)
     }
 }

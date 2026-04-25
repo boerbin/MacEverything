@@ -53,14 +53,21 @@
 		A1000027 /* QueryParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A200003B; };
 		A1000028 /* SearchEngineAdvancedQuery.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A200003C; };
 		A1000029 /* SearchEngineStructuredQuery.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000042; };
-		A1000037 /* RichTextExtractor.mm in Sources */ = {isa = PBXBuildFile; fileRef = A200004B; };
-		A1000038 /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A200004C; };
 		B1000001 /* MacEverythingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001; };
 		A100002A /* SearchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000043; };
 		D1000001 /* MCPConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000001; };
 		D1000002 /* MacEverythingMCP in Copy MCP Binary */ = {isa = PBXBuildFile; fileRef = C2000099; };
 		A1000035 /* AISetupHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000050; };
 		A1000036 /* AISetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000051; };
+		A1000040 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000060; };
+		A1000041 /* SemanticSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000061; };
+		A1000042 /* AIServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000062; };
+		A1000050 /* LiteLLMClient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000070; };
+		A1000051 /* EmbeddingIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000072; };
+		A1000052 /* VectorSearch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000074; };
+		A1000053 /* NLTranslator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000076; };
+		A1000054 /* ServiceEngine+Semantic.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000078; };
+		A1000055 /* MacSearchBridge+Semantic.mm in Sources */ = {isa = PBXBuildFile; fileRef = A2000080; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -153,12 +160,23 @@
 		A2000047 /* SearchEngineV6.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SearchEngineV6.cpp; sourceTree = "<group>"; };
 		A2000048 /* FlatIndexWriter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FlatIndexWriter.h; sourceTree = "<group>"; };
 		A2000049 /* FlatIndexWriter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FlatIndexWriter.cpp; sourceTree = "<group>"; };
-		A200004A /* RichTextExtractor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RichTextExtractor.h; sourceTree = "<group>"; };
-		A200004B /* RichTextExtractor.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RichTextExtractor.mm; sourceTree = "<group>"; };
-		A200004C /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
 		A2000043 /* SearchOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchOptions.swift; sourceTree = "<group>"; };
 		A2000050 /* AISetupHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISetupHelper.swift; sourceTree = "<group>"; };
 		A2000051 /* AISetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISetupView.swift; sourceTree = "<group>"; };
+		A2000060 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
+		A2000061 /* SemanticSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticSettingsView.swift; sourceTree = "<group>"; };
+		A2000062 /* AIServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIServiceClient.swift; sourceTree = "<group>"; };
+		A2000070 /* LiteLLMClient.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = LiteLLMClient.cpp; sourceTree = "<group>"; };
+		A2000071 /* LiteLLMClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LiteLLMClient.h; sourceTree = "<group>"; };
+		A2000072 /* EmbeddingIndex.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EmbeddingIndex.cpp; sourceTree = "<group>"; };
+		A2000073 /* EmbeddingIndex.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EmbeddingIndex.h; sourceTree = "<group>"; };
+		A2000074 /* VectorSearch.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VectorSearch.cpp; sourceTree = "<group>"; };
+		A2000075 /* VectorSearch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VectorSearch.h; sourceTree = "<group>"; };
+		A2000076 /* NLTranslator.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = NLTranslator.cpp; sourceTree = "<group>"; };
+		A2000077 /* NLTranslator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NLTranslator.h; sourceTree = "<group>"; };
+		A2000078 /* ServiceEngine+Semantic.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "ServiceEngine+Semantic.cpp"; sourceTree = "<group>"; };
+		A2000080 /* MacSearchBridge+Semantic.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = "MacSearchBridge+Semantic.mm"; sourceTree = "<group>"; };
+		A2000081 /* MacSearchBridge+Semantic.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MacSearchBridge+Semantic.h"; sourceTree = "<group>"; };
 		B2000001 /* MacEverythingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacEverythingUITests.swift; sourceTree = "<group>"; };
 		B2000002 /* MacEverythingUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacEverythingUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2000001 /* mcp_main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mcp_main.cpp; sourceTree = "<group>"; };
@@ -211,7 +229,6 @@
 			files = (
 				A100000B /* Carbon.framework in Frameworks */,
 				A100000D /* CoreServices.framework in Frameworks */,
-				A1000038 /* Quartz.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -283,6 +300,9 @@
 				A2000045 /* SearchSyntaxHelpView.swift */,
 				A2000050 /* AISetupHelper.swift */,
 				A2000051 /* AISetupView.swift */,
+				A2000060 /* AISettingsView.swift */,
+				A2000061 /* SemanticSettingsView.swift */,
+				A2000062 /* AIServiceClient.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -294,6 +314,8 @@
 				A2000022 /* MacSearchBridge_Internal.h */,
 				A2000009 /* MacSearchBridge.mm */,
 				A2000023 /* MacSearchBridge+Content.mm */,
+				A2000080 /* MacSearchBridge+Semantic.mm */,
+				A2000081 /* MacSearchBridge+Semantic.h */,
 			);
 			path = Bridge;
 			sourceTree = "<group>";
@@ -344,8 +366,15 @@
 				A200003F /* QueryParser.h */,
 				A2000040 /* QueryFilterParser.h */,
 				A2000041 /* QueryDateParser.h */,
-				A200004A /* RichTextExtractor.h */,
-				A200004B /* RichTextExtractor.mm */,
+				A2000070 /* LiteLLMClient.cpp */,
+				A2000071 /* LiteLLMClient.h */,
+				A2000072 /* EmbeddingIndex.cpp */,
+				A2000073 /* EmbeddingIndex.h */,
+				A2000074 /* VectorSearch.cpp */,
+				A2000075 /* VectorSearch.h */,
+				A2000076 /* NLTranslator.cpp */,
+				A2000077 /* NLTranslator.h */,
+				A2000078 /* ServiceEngine+Semantic.cpp */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -355,7 +384,6 @@
 			children = (
 				A200000F /* Carbon.framework */,
 				A2000015 /* CoreServices.framework */,
-				A200004C /* Quartz.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -506,7 +534,15 @@
 				A100002A /* SearchOptions.swift in Sources */,
 				A1000035 /* AISetupHelper.swift in Sources */,
 				A1000036 /* AISetupView.swift in Sources */,
-				A1000037 /* RichTextExtractor.mm in Sources */,
+				A1000040 /* AISettingsView.swift in Sources */,
+				A1000041 /* SemanticSettingsView.swift in Sources */,
+				A1000042 /* AIServiceClient.swift in Sources */,
+				A1000050 /* LiteLLMClient.cpp in Sources */,
+				A1000051 /* EmbeddingIndex.cpp in Sources */,
+				A1000052 /* VectorSearch.cpp in Sources */,
+				A1000053 /* NLTranslator.cpp in Sources */,
+				A1000054 /* ServiceEngine+Semantic.cpp in Sources */,
+				A1000055 /* MacSearchBridge+Semantic.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -604,6 +640,8 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/MacEverything/Core",
 					"$(SRCROOT)/MacEverything/Bridge",
+					"$(SRCROOT)/third_party",
+					"$(SRCROOT)/third_party/hnswlib",
 					"/opt/homebrew/opt/re2/include",
 					"/opt/homebrew/opt/abseil/include",
 				);
@@ -613,6 +651,7 @@
 				);
 				OTHER_LDFLAGS = (
 					"-lre2",
+					"-lsqlite3",
 				);
 			};
 			name = Debug;
@@ -637,6 +676,8 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/MacEverything/Core",
 					"$(SRCROOT)/MacEverything/Bridge",
+					"$(SRCROOT)/third_party",
+					"$(SRCROOT)/third_party/hnswlib",
 					"/opt/homebrew/opt/re2/include",
 					"/opt/homebrew/opt/abseil/include",
 				);
@@ -646,6 +687,7 @@
 				);
 				OTHER_LDFLAGS = (
 					"-lre2",
+					"-lsqlite3",
 				);
 			};
 			name = Release;
