@@ -1,7 +1,8 @@
 CXX = clang++
 CXXFLAGS = -std=c++20 -O2 -Wall -Wextra
-FRAMEWORKS = -framework CoreServices
+FRAMEWORKS = -framework CoreServices -framework Quartz -framework Foundation -framework AppKit
 CORE_SRCS = $(wildcard MacEverything/Core/*.cpp)
+CORE_MM_SRCS = $(wildcard MacEverything/Core/*.mm)
 RE2_PREFIX = /opt/homebrew/opt/re2
 RE2_CFLAGS = -I$(RE2_PREFIX)/include
 RE2_LDFLAGS = -L$(RE2_PREFIX)/lib -lre2
@@ -9,13 +10,19 @@ RE2_LDFLAGS = -L$(RE2_PREFIX)/lib -lre2
 # === Build targets ===
 .PHONY: test test-fast test-slow test-all test-asan test-tsan build clean app dmg daemon help
 
-test_all: test_all.cpp $(CORE_SRCS)
+# Compile .mm files to object files with ObjC++ flags
+%.o: %.mm
+	$(CXX) $(CXXFLAGS) $(RE2_CFLAGS) -fobjc-arc -IMacEverything/Core -c $< -o $@
+
+CORE_MM_OBJS = $(CORE_MM_SRCS:.mm=.o)
+
+test_all: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
 	$(CXX) $(CXXFLAGS) $(RE2_CFLAGS) $(FRAMEWORKS) $(RE2_LDFLAGS) -IMacEverything/Core $^ -o $@
 
-benchmark: benchmark.cpp $(CORE_SRCS)
+benchmark: benchmark.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
 	$(CXX) $(CXXFLAGS) $(RE2_CFLAGS) $(FRAMEWORKS) $(RE2_LDFLAGS) $^ -o $@
 
-maceverything-daemon: MacEverything/CLI/daemon_main.cpp $(CORE_SRCS)
+maceverything-daemon: MacEverything/CLI/daemon_main.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
 	$(CXX) $(CXXFLAGS) $(RE2_CFLAGS) $(FRAMEWORKS) $(RE2_LDFLAGS) -IMacEverything/Core $^ -o $@
 
 daemon: maceverything-daemon
@@ -28,11 +35,11 @@ lint-bridge:
 		MacEverything/Bridge/MacSearchBridge+Content.mm
 
 # === Sanitizer targets ===
-test-asan: test_all.cpp $(CORE_SRCS)
+test-asan: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
 	$(CXX) -std=c++20 -O1 -g -fsanitize=address -fno-omit-frame-pointer $(RE2_CFLAGS) $(FRAMEWORKS) $(RE2_LDFLAGS) -IMacEverything/Core $^ -o test_all_asan
 	./test_all_asan --fast
 
-test-tsan: test_all.cpp $(CORE_SRCS)
+test-tsan: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
 	$(CXX) -std=c++20 -O1 -g -fsanitize=thread $(RE2_CFLAGS) $(FRAMEWORKS) $(RE2_LDFLAGS) -IMacEverything/Core $^ -o test_all_tsan
 	./test_all_tsan --fast
 
@@ -64,6 +71,7 @@ dmg: app
 # === Cleanup ===
 clean:
 	rm -f test_all test_all_asan test_all_tsan benchmark maceverything-daemon
+	rm -f MacEverything/Core/*.o
 	rm -rf build/
 
 # === Help ===

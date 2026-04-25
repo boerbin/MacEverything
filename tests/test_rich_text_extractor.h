@@ -1,7 +1,7 @@
 #pragma once
 // Tests for RichTextExtractor: rich document text extraction
 
-#include "MacEverything/Core/RichTextExtractor.h"
+#include "RichTextExtractor.h"
 #include <fstream>
 #include <cstdlib>
 #include <filesystem>
