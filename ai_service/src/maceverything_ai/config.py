@@ -8,7 +8,7 @@ class Config:
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
     ollama_keep_alive: str = "5m"
-    llm_timeout: float = 15.0
+    llm_timeout: float = 60.0
     backend: str = "ollama"
     claude_model: str = "claude-haiku-4-5-20251001"
 

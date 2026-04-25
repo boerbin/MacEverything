@@ -63,18 +63,11 @@ zip:                — Archive files (zip, rar, 7z, tar, gz, bz2, xz, dmg, iso)
 FEW_SHOT_EXAMPLES = [
     ("最近下载的PDF", "path:Downloads ext:pdf dm:last7days"),
     ("上个月修改的Word文档", "ext:doc;docx dm:lastmonth"),
-    ("代码目录里的配置文件", "path:src ext:json;yaml;yml;toml;ini;conf;cfg;env"),
     ("除了node_modules以外的JS文件", "ext:js nopath:node_modules"),
     ("大于100MB的视频文件", "video: size:>100mb"),
-    ("最近下载的大文件", "path:Downloads size:>100mb dm:last7days"),
-    ("桌面上的截图", "path:Desktop ext:png;jpg;jpeg;heic"),
+    ("桌面上的截图", "path:Desktop pic:"),
     ("今天创建的Python脚本", "ext:py dc:today"),
     ("recent large PDF files", "ext:pdf size:>10mb dm:last7days"),
-    ("python scripts that process CSV", "ext:py content:csv"),
-    ("config files in my project", "ext:json;yaml;yml;toml;ini;conf;cfg;env"),
-    ("images downloaded this week", "path:Downloads pic: dm:thisweek"),
-    ("名字里包含report的Excel", "report ext:xls;xlsx"),
-    ("去年的文档", "doc: dm:lastyear"),
     ("3天内修改的Markdown笔记", "ext:md dm:last3days"),
 ]
 

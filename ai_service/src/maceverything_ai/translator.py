@@ -77,11 +77,12 @@ class Translator:
                 success=True,
             )
         except Exception as e:
+            error_msg = str(e) or f"{type(e).__name__}: LLM request failed"
             return TranslationResult(
                 original_query=user_query,
                 translated_query=user_query,
                 success=False,
-                error=str(e),
+                error=error_msg,
             )
 
     async def translate_stream(self, user_query: str):
@@ -115,4 +116,5 @@ class Translator:
                 error="LLM returned empty response" if not translated else None,
             )
         except Exception as e:
-            yield TranslationResult(user_query, user_query, False, error=str(e))
+            error_msg = str(e) or f"{type(e).__name__}: LLM request failed"
+            yield TranslationResult(user_query, user_query, False, error=error_msg)
