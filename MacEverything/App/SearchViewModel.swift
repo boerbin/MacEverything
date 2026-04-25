@@ -20,6 +20,16 @@ struct ContentFileItem: Identifiable {
     let fileType: UInt8
 }
 
+struct SemanticFileItem: Identifiable {
+    let id: String
+    let name: String
+    let path: String
+    let type: UInt8
+    let size: UInt64
+    let modTime: time_t
+    let similarity: Float
+}
+
 @MainActor
 class SearchViewModel: ObservableObject {
     @Published var searchText: String = ""
@@ -41,6 +51,11 @@ class SearchViewModel: ObservableObject {
     @Published var isSyncing: Bool = false
     @Published var isBuildingIndex: Bool = false
     @Published var ghostSuggestion: String? = nil
+    @Published var semanticResults: [SemanticFileItem] = []
+    @Published var isSemanticSearching: Bool = false
+    @Published var semanticIndexedCount: UInt32 = 0
+    @Published var isSemanticIndexing: Bool = false
+    @Published var semanticIndexProgress: (indexed: UInt32, total: UInt32)?
 
     @Published var aiModeEnabled = false
     @Published var aiTranslatedQuery: String?
@@ -63,6 +78,7 @@ class SearchViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     private var recentTask: Task<Void, Never>?
     private var settledTask: Task<Void, Never>?
+    private var semanticSearchTask: Task<Void, Never>?
     private var optionsSink: AnyCancellable?
     private var cachedResults: [MEFileResult] = []
     private var loadedCount: Int = 0
@@ -151,6 +167,23 @@ class SearchViewModel: ObservableObject {
             }
         }
 
+        bridge.onSemanticIndexProgress = { [weak self] indexed, total in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.isSemanticIndexing = true
+                self.semanticIndexProgress = (indexed, total)
+            }
+        }
+
+        bridge.onSemanticIndexComplete = { [weak self] totalIndexed in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.isSemanticIndexing = false
+                self.semanticIndexProgress = nil
+                self.semanticIndexedCount = totalIndexed
+            }
+        }
+
         // Set up FSEvents change callback before starting
         bridge.onIndexChanged = { [weak self] in
             Task { @MainActor in
@@ -192,6 +225,8 @@ class SearchViewModel: ObservableObject {
         contentResults = []
         isContentSearch = false
         contentKeyword = ""
+        semanticResults = []
+        semanticSearchTask?.cancel()
 
         // Delete cached index files so startIncremental does a full scan
         try? FileManager.default.removeItem(atPath: Self.cachePath)
@@ -219,6 +254,9 @@ class SearchViewModel: ObservableObject {
             contentKeyword = "" // H-9: reset cached keyword
             ghostSuggestion = nil
             settledTask?.cancel()
+            semanticSearchTask?.cancel()
+            semanticResults = []
+            isSemanticSearching = false
             // Cancel any in-flight queries for this GUI session
             bridge.cancelSession(Self.guiSessionId)
             if scanComplete {
@@ -276,6 +314,11 @@ class SearchViewModel: ObservableObject {
                     guard !Task.isCancelled else { return }
                     self.performSearch(text)
                 }
+            }
+
+            // Run semantic search in parallel with traditional search
+            if semanticIndexedCount > 0 {
+                performSemanticSearch(text)
             }
         }
 
@@ -345,6 +388,33 @@ class SearchViewModel: ObservableObject {
                 self.contentResults = items
                 self.totalMatches = items.count
                 self.queryTimeMs = elapsed
+            }
+        }
+    }
+
+    func performSemanticSearch(_ text: String) {
+        let bridge = self.bridge
+        semanticSearchTask?.cancel()
+        isSemanticSearching = true
+        semanticSearchTask = Task.detached { [weak self] in
+            let results = bridge.semanticSearch(text, maxResults: 20)
+            var items: [SemanticFileItem] = []
+            items.reserveCapacity(results.count)
+            for r in results {
+                items.append(SemanticFileItem(
+                    id: "\(r.path):\(r.similarity)",
+                    name: r.name,
+                    path: r.path,
+                    type: r.type,
+                    size: r.size,
+                    modTime: r.modTime,
+                    similarity: r.similarity
+                ))
+            }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.semanticResults = items
+                self.isSemanticSearching = false
             }
         }
     }
@@ -449,6 +519,7 @@ class SearchViewModel: ObservableObject {
         isSyncing = bridge.isSyncing
         isBuildingIndex = bridge.isPhase2Pending
         contentIndexedCount = bridge.contentIndexedFileCount()
+        semanticIndexedCount = bridge.semanticIndexedCount()
 
         // Skip expensive search/query when app is not focused.
         // Results will refresh on focus regain via onWindowFocusChanged.

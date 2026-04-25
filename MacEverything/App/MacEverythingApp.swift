@@ -49,6 +49,10 @@ struct MacEverythingApp: App {
                     AISettingsWindowController.shared.showWindow()
                 }
 
+                Button("Semantic Settings...") {
+                    SemanticSettingsWindowController.shared.showWindow()
+                }
+
                 Divider()
 
                 Menu("MCP Integration") {
@@ -82,6 +86,27 @@ class ContentSettingsWindowController {
         let hostingController = NSHostingController(rootView: settingsView)
         let win = NSWindow(contentViewController: hostingController)
         win.title = "Content Settings"
+        win.styleMask = [.titled, .closable]
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        window = win
+    }
+}
+
+class SemanticSettingsWindowController {
+    static let shared = SemanticSettingsWindowController()
+    private var window: NSWindow?
+
+    func showWindow() {
+        if let existing = window, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let settingsView = SemanticSettingsView()
+        let hostingController = NSHostingController(rootView: settingsView)
+        let win = NSWindow(contentViewController: hostingController)
+        win.title = "Semantic Settings"
         win.styleMask = [.titled, .closable]
         win.center()
         win.makeKeyAndOrderFront(nil)

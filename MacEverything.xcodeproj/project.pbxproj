@@ -41,6 +41,7 @@
 		A1000034 /* FlatIndexWriter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000049; };
 		A1000035 /* AIServiceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200004A; };
 		A1000036 /* AISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000051; };
+		A1000070 /* SemanticSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000070; };
 		A1000037 /* OllamaSetupHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000052; };
 		A1000038 /* OllamaSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000053; };
 		A1000039 /* EmbeddingIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000054; };
@@ -164,6 +165,7 @@
 		A200004A /* AIServiceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIServiceClient.swift; sourceTree = "<group>"; };
 		A2000043 /* SearchOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchOptions.swift; sourceTree = "<group>"; };
 		A2000051 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
+		A2000070 /* SemanticSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticSettingsView.swift; sourceTree = "<group>"; };
 		A2000052 /* OllamaSetupHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaSetupHelper.swift; sourceTree = "<group>"; };
 		A2000053 /* OllamaSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaSetupView.swift; sourceTree = "<group>"; };
 		A2000054 /* EmbeddingIndex.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EmbeddingIndex.cpp; sourceTree = "<group>"; };
@@ -298,6 +300,7 @@
 				A2000045 /* SearchSyntaxHelpView.swift */,
 				A200004A /* AIServiceClient.swift */,
 				A2000051 /* AISettingsView.swift */,
+				A2000070 /* SemanticSettingsView.swift */,
 				A2000052 /* OllamaSetupHelper.swift */,
 				A2000053 /* OllamaSetupView.swift */,
 			);
@@ -537,6 +540,7 @@
 				A1000029 /* SearchEngineStructuredQuery.cpp in Sources */,
 				A100002A /* SearchOptions.swift in Sources */,
 				A1000036 /* AISettingsView.swift in Sources */,
+				A1000070 /* SemanticSettingsView.swift in Sources */,
 				A1000037 /* OllamaSetupHelper.swift in Sources */,
 				A1000038 /* OllamaSetupView.swift in Sources */,
 			);
