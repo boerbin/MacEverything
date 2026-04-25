@@ -1,0 +1,30 @@
+# LiteLLM Model Gateway Configuration for MacEverything
+# Start with: litellm --config config.yaml --port 19861
+
+model_list:
+  # NL-to-Query translation — uses local small model
+  - model_name: "translate"
+    litellm_params:
+      model: "ollama/qwen2.5:3b"
+      api_base: "http://localhost:11434"
+
+  # Embedding generation — uses local embedding model
+  - model_name: "embed"
+    litellm_params:
+      model: "ollama/bge-m3"
+      api_base: "http://localhost:11434"
+
+  # File summarization — uses local model (can be swapped to remote)
+  - model_name: "summarize"
+    litellm_params:
+      model: "ollama/qwen2.5:3b"
+      api_base: "http://localhost:11434"
+
+  # Example: remote fallback for summarization (uncomment to enable)
+  # - model_name: "summarize"
+  #   litellm_params:
+  #     model: "claude-haiku-4-5-20251001"
+  #     api_key: "sk-ant-your-key-here"
+
+general_settings:
+  master_key: ""
