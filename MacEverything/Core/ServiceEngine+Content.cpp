@@ -11,6 +11,7 @@ namespace fs = std::filesystem;
 // ═══════════════════════════════════════════════════════
 
 void ServiceEngine::setupContentPersistence() {
+  try {
     auto contentIndex = safeContentIndex();
     auto engine = safeEngine();
     if (!contentIndex || !engine) return;
@@ -25,9 +26,6 @@ void ServiceEngine::setupContentPersistence() {
     setContentPersistence(newContentPersistence);
     newContentPersistence->load();
 
-    // Prune content entries whose fileIndex no longer points to a regular file
-    // in the search engine.  This handles accumulated drift from search engine
-    // compactions that remapped indices after the content base file was saved.
     {
         uint32_t total = engine->recordCount();
         std::unordered_set<uint32_t> validFileIndices;
@@ -42,8 +40,6 @@ void ServiceEngine::setupContentPersistence() {
         if (pruned > 0) {
             LOG_INFO("ServiceEngine", "Pruned " << pruned
                       << " stale content entries after load");
-            // Save the pruned state directly to base file.  WAL isn't attached
-            // yet, so compact() would skip — write the base file instead.
             contentIndex->saveToFile(basePath);
         }
     }
@@ -51,12 +47,14 @@ void ServiceEngine::setupContentPersistence() {
     newContentPersistence->attachWAL();
     newContentPersistence->startAutoCompaction(300.0);
 
-    // Wire content persistence into IndexPersistence so fullCompact() can
-    // flush content index after remapping file indices.
     auto persistence = safePersistence();
     if (persistence) {
         persistence->setContentIndexPersistence(newContentPersistence);
     }
+  } catch (const std::exception& e) {
+    LOG_ERROR("ServiceEngine", "Content persistence load failed: " << e.what());
+    if (onLoadError) onLoadError(std::string("Content index corrupted: ") + e.what());
+  }
 }
 
 // ═══════════════════════════════════════════════════════

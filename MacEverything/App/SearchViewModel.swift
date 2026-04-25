@@ -58,6 +58,8 @@ class SearchViewModel: ObservableObject {
     @Published var semanticIndexedCount: UInt32 = 0
     @Published var isSemanticIndexing: Bool = false
     @Published var semanticIndexProgress: (indexed: UInt32, total: UInt32)?
+    @Published var showIndexCorruptionAlert: Bool = false
+    var indexCorruptionMessage: String = ""
 
     /// Structured highlight hints extracted from the C++ query AST.
     /// Replaces the old keyword-based approach with field-aware, mode-aware hints.
@@ -203,6 +205,14 @@ class SearchViewModel: ObservableObject {
             }
         }
 
+        bridge.onLoadError = { [weak self] message in
+            Task { @MainActor in
+                guard let self else { return }
+                self.indexCorruptionMessage = message ?? "Unknown error"
+                self.showIndexCorruptionAlert = true
+            }
+        }
+
         bridge.startIncremental(from: "/",
                                 cachePath: Self.cachePath,
                                 walPath: Self.walPath) { [weak self] count, didFullScan in
@@ -244,6 +254,20 @@ class SearchViewModel: ObservableObject {
         try? FileManager.default.removeItem(atPath: Self.pagesPath)
         try? FileManager.default.removeItem(atPath: Self.ptablePath)
 
+        startIncremental()
+    }
+
+    func clearCacheAndRestart() {
+        try? FileManager.default.removeItem(atPath: Self.cachePath)
+        try? FileManager.default.removeItem(atPath: Self.walPath)
+        try? FileManager.default.removeItem(atPath: Self.pagesPath)
+        try? FileManager.default.removeItem(atPath: Self.ptablePath)
+        let cacheDir = Self.cacheDir
+        for file in (try? FileManager.default.contentsOfDirectory(atPath: cacheDir)) ?? [] {
+            if file.hasPrefix("content_index") || file.hasPrefix("index.v6") {
+                try? FileManager.default.removeItem(atPath: (cacheDir as NSString).appendingPathComponent(file))
+            }
+        }
         startIncremental()
     }
 

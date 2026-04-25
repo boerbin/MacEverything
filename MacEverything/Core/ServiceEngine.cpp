@@ -193,6 +193,7 @@ void ServiceEngine::startIncremental(StartupCallback completion) {
     LOG_INFO("ServiceEngine", "startIncremental from: " << config_.scanRoot);
 
     dispatch_group_async(backgroundGroup_, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      try {
         auto incrementalStart = std::chrono::steady_clock::now();
         auto engine = std::make_shared<SearchEngine>();
 
@@ -238,11 +239,14 @@ void ServiceEngine::startIncremental(StartupCallback completion) {
             // Dispatch Phase 2: build trigram indices in background
             if (engine->isPhase2Pending()) {
                 dispatch_group_async(this->backgroundGroup_, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                  try {
                     if (this->shuttingDown_.load(std::memory_order_acquire)) return;
                     auto eng = this->safeEngine();
                     if (eng) eng->completePhase2();
-                    // Notify observers so search results refresh with the full index
                     if (this->onIndexChanged) this->onIndexChanged();
+                  } catch (const std::exception& e) {
+                    LOG_ERROR("ServiceEngine", "Phase 2 index build failed: " << e.what());
+                  }
                 });
             }
 
@@ -281,6 +285,17 @@ void ServiceEngine::startIncremental(StartupCallback completion) {
 
             if (completion) completion(count, true);
         });
+      } catch (const std::exception& e) {
+        std::string msg = std::string("Index load failed: ") + e.what();
+        LOG_ERROR("ServiceEngine", msg);
+        // Delete corrupt cache files so next launch starts fresh
+        std::remove((config_.cachePath + "/index.bin").c_str());
+        std::remove((config_.cachePath + "/index.wal").c_str());
+        std::remove((config_.cachePath + "/index.pages").c_str());
+        std::remove((config_.cachePath + "/index.ptable").c_str());
+        std::remove((config_.cachePath + "/index.v6").c_str());
+        if (onLoadError) onLoadError(msg);
+      }
     });
 }
 

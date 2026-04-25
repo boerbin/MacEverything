@@ -41,6 +41,7 @@ public:
     using FileChangeCallback = std::function<void(const std::string& path, const std::string& action)>;
     using SemanticProgressCallback = std::function<void(uint64_t indexed, uint64_t total)>;
     using SemanticCompleteCallback = std::function<void(uint32_t totalIndexed)>;
+    using LoadErrorCallback = std::function<void(const std::string& message)>;
 
     explicit ServiceEngine(const ServiceConfig& config);
     ~ServiceEngine();
@@ -92,6 +93,7 @@ public:
     FileChangeCallback onFileChanged;
     SemanticProgressCallback onSemanticIndexProgress;
     SemanticCompleteCallback onSemanticIndexComplete;
+    LoadErrorCallback onLoadError;
 
     // ── Admin callbacks for HttpServer ──
     HttpServer::AdminCallbacks adminCallbacks;

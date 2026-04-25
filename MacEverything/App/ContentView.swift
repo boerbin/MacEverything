@@ -352,6 +352,12 @@ struct ContentView: View {
         .sheet(isPresented: $viewModel.showAISetup) {
             AISetupView()
         }
+        .alert("Index Error", isPresented: $viewModel.showIndexCorruptionAlert) {
+            Button("Clear Cache & Retry") { viewModel.clearCacheAndRestart() }
+            Button("Quit", role: .destructive) { NSApp.terminate(nil) }
+        } message: {
+            Text("The search index appears corrupted.\n\n\(viewModel.indexCorruptionMessage)\n\nClearing the cache will rebuild the index from scratch.")
+        }
         .onReceive(NotificationCenter.default.publisher(for: .rebuildIndex)) { _ in
             viewModel.rebuildIndex()
         }

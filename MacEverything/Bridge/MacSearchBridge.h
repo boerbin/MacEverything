@@ -162,6 +162,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Called on the main queue when semantic indexing completes.
 @property (nonatomic, copy, nullable) void (^onSemanticIndexComplete)(uint32_t totalIndexed);
 
+/// Called when index loading fails due to corruption.
+@property (nonatomic, copy, nullable) void (^onLoadError)(NSString *message);
+
 @end
 
 NS_ASSUME_NONNULL_END

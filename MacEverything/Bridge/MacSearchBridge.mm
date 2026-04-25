@@ -185,6 +185,14 @@
             if (s.onSemanticIndexComplete) s.onSemanticIndexComplete(totalIndexed);
         });
     };
+    _serviceEngine->onLoadError = [weakSelf](const std::string& msg) {
+        MacSearchBridge *s = weakSelf;
+        if (!s) return;
+        NSString *nsMsg = [NSString stringWithUTF8String:msg.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (s.onLoadError) s.onLoadError(nsMsg);
+        });
+    };
 }
 
 - (void)startScanFrom:(NSString *)rootPath
