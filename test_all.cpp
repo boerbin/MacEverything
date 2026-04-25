@@ -126,6 +126,7 @@ namespace fs = std::filesystem;
 #include "tests/test_batch_split.h"
 #include "tests/test_litellm_client.h"
 #include "tests/test_embedding_index.h"
+#include "tests/test_vector_search.h"
 
 // ═══════════════════════════════════════════════════════
 //  Main
@@ -194,7 +195,8 @@ static void printUsage(const char* prog) {
     std::cout << "  76 (FSEvents search latency),\n";
     std::cout << "  77 (batch split),\n";
     std::cout << "  78 (LiteLLM client),\n";
-    std::cout << "  79 (embedding index)\n";
+    std::cout << "  79 (embedding index),\n";
+    std::cout << "  80 (vector search)\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -345,6 +347,7 @@ int main(int argc, char* argv[]) {
     if (selectedParts.count("77")) runBatchSplitTests();
     if (selectedParts.count("78")) runLiteLLMClientTests();
     if (selectedParts.count("79")) runEmbeddingIndexTests();
+    if (selectedParts.count("80")) runVectorSearchTests();
 
     // ── Final Summary ──
     std::cout << "╔══════════════════════════════════════════╗\n";
