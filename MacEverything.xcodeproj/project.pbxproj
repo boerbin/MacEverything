@@ -588,6 +588,8 @@
 					"$(SRCROOT)/MacEverything/Bridge",
 					"/opt/homebrew/opt/re2/include",
 					"/opt/homebrew/opt/abseil/include",
+					"$(SRCROOT)/third_party",
+					"$(SRCROOT)/third_party/hnswlib",
 				);
 				LIBRARY_SEARCH_PATHS = (
 					"/opt/homebrew/opt/re2/lib",
@@ -595,6 +597,7 @@
 				);
 				OTHER_LDFLAGS = (
 					"-lre2",
+					"-lsqlite3",
 				);
 			};
 			name = Debug;
@@ -621,6 +624,8 @@
 					"$(SRCROOT)/MacEverything/Bridge",
 					"/opt/homebrew/opt/re2/include",
 					"/opt/homebrew/opt/abseil/include",
+					"$(SRCROOT)/third_party",
+					"$(SRCROOT)/third_party/hnswlib",
 				);
 				LIBRARY_SEARCH_PATHS = (
 					"/opt/homebrew/opt/re2/lib",
@@ -628,6 +633,7 @@
 				);
 				OTHER_LDFLAGS = (
 					"-lre2",
+					"-lsqlite3",
 				);
 			};
 			name = Release;
