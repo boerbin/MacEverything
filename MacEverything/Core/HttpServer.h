@@ -81,8 +81,6 @@ private:
     std::string handleSimilarSearch(const std::unordered_map<std::string, std::string>& params);
     std::string handleAITranslate(const std::string& body);
     std::string handleAIStatus();
-    std::string handleGetSemanticConfig();
-    std::string handleSetSemanticConfig(const std::string& body);
     std::string handleRebuildSemanticIndex();
 
     std::string jsonResponse(int status, const std::string& body);

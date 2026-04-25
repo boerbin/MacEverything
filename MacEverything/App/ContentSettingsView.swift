@@ -32,6 +32,9 @@ struct ContentSettingsView: View {
 
                     Text("File Extensions")
                         .font(.subheadline)
+                    Text("Also applies to semantic search indexing.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
 
                     ScrollView {
                         FlowLayout(spacing: 4) {

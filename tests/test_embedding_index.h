@@ -148,17 +148,6 @@ inline void runEmbeddingIndexTests() {
         std::cout << "  [PASS] Persistence across close/reopen" << std::endl;
     }
 
-    // Test 10: Extensions config
-    {
-        EmbeddingIndex idx;
-        idx.setExtensions({"md", "txt", "py"});
-        auto exts = idx.getExtensions();
-        assert(exts.size() == 3);
-        idx.setMaxFileSize(2 * 1024 * 1024);
-        assert(idx.getMaxFileSize() == 2 * 1024 * 1024);
-        std::cout << "  [PASS] Extensions config" << std::endl;
-    }
-
     std::filesystem::remove(dbPath);
     std::cout << "=== EmbeddingIndex Tests: ALL PASSED ===" << std::endl;
 }

@@ -28,15 +28,7 @@ public:
     std::vector<std::pair<std::string, std::vector<float>>> getAllEmbeddings();
     uint32_t indexedCount();
 
-    // Configuration (independent from ContentIndex)
-    void setExtensions(const std::vector<std::string>& exts);
-    std::vector<std::string> getExtensions() const;
-    void setMaxFileSize(uint64_t bytes);
-    uint64_t getMaxFileSize() const;
-
 private:
     sqlite3* db_ = nullptr;
-    std::vector<std::string> extensions_;
-    uint64_t maxFileSize_ = 1024 * 1024;  // 1MB default
     void ensureTable();
 };

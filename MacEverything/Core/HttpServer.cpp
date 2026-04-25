@@ -341,7 +341,7 @@ std::string HttpServer::route(const HttpRequest& req) {
         } else if (req.path == "/api/ai/status") {
             return handleAIStatus();
         } else if (req.path == "/api/semantic/config") {
-            return handleGetSemanticConfig();
+            return handleGetContentConfig();  // semantic shares content config
         }
     } else if (req.method == "POST") {
         if (req.path == "/api/index/rebuild") {
@@ -353,7 +353,7 @@ std::string HttpServer::route(const HttpRequest& req) {
         } else if (req.path == "/api/ai/translate") {
             return handleAITranslate(req.body);
         } else if (req.path == "/api/semantic/config") {
-            return handleSetSemanticConfig(req.body);
+            return errorResponse(400, "Semantic config is shared with content config. Use POST /api/content/config instead.");
         } else if (req.path == "/api/semantic/rebuild") {
             return handleRebuildSemanticIndex();
         }
@@ -886,84 +886,6 @@ std::string HttpServer::handleAIStatus() {
     return jsonResponse(200, json.str());
 }
 
-std::string HttpServer::handleGetSemanticConfig() {
-    if (!getEmbeddingIndex_) return errorResponse(503, "Semantic search not configured");
-    auto embIdx = getEmbeddingIndex_();
-    if (!embIdx) return errorResponse(503, "Embedding index not available");
-
-    auto exts = embIdx->getExtensions();
-    uint64_t maxSize = embIdx->getMaxFileSize();
-
-    std::ostringstream json;
-    json << "{\"extensions\":[";
-    for (size_t i = 0; i < exts.size(); ++i) {
-        if (i > 0) json << ',';
-        json << "\"" << jsonEscapeString(exts[i]) << "\"";
-    }
-    json << "],\"maxFileSize\":" << maxSize << "}";
-    return jsonResponse(200, json.str());
-}
-
-std::string HttpServer::handleSetSemanticConfig(const std::string& body) {
-    if (!getEmbeddingIndex_) return errorResponse(503, "Semantic search not configured");
-    auto embIdx = getEmbeddingIndex_();
-    if (!embIdx) return errorResponse(503, "Embedding index not available");
-
-    auto currentExts = embIdx->getExtensions();
-    uint64_t currentMaxSize = embIdx->getMaxFileSize();
-
-    bool hasExtensions = false;
-    std::vector<std::string> newExts;
-
-    // Parse "extensions":[...]
-    auto extPos = body.find("\"extensions\"");
-    if (extPos != std::string::npos) {
-        auto arrStart = body.find('[', extPos);
-        auto arrEnd = body.find(']', arrStart);
-        if (arrStart != std::string::npos && arrEnd != std::string::npos) {
-            hasExtensions = true;
-            std::string arrContent = body.substr(arrStart + 1, arrEnd - arrStart - 1);
-            size_t pos = 0;
-            while (pos < arrContent.size()) {
-                auto qStart = arrContent.find('"', pos);
-                if (qStart == std::string::npos) break;
-                auto qEnd = arrContent.find('"', qStart + 1);
-                if (qEnd == std::string::npos) break;
-                newExts.push_back(arrContent.substr(qStart + 1, qEnd - qStart - 1));
-                pos = qEnd + 1;
-            }
-        }
-    }
-
-    // Parse "maxFileSize":number
-    uint64_t newMaxSize = currentMaxSize;
-    auto msPos = body.find("\"maxFileSize\"");
-    if (msPos != std::string::npos) {
-        auto colonPos = body.find(':', msPos + 13);
-        if (colonPos != std::string::npos) {
-            size_t numStart = colonPos + 1;
-            while (numStart < body.size() && body[numStart] == ' ') ++numStart;
-            size_t numEnd = numStart;
-            while (numEnd < body.size() && body[numEnd] >= '0' && body[numEnd] <= '9') ++numEnd;
-            if (numEnd > numStart) {
-                newMaxSize = std::stoull(body.substr(numStart, numEnd - numStart));
-            }
-        }
-    }
-
-    const auto& finalExts = hasExtensions ? newExts : currentExts;
-    embIdx->setExtensions(finalExts);
-    embIdx->setMaxFileSize(newMaxSize);
-
-    std::ostringstream json;
-    json << "{\"message\":\"Semantic config updated\",\"extensions\":[";
-    for (size_t i = 0; i < finalExts.size(); ++i) {
-        if (i > 0) json << ',';
-        json << "\"" << jsonEscapeString(finalExts[i]) << "\"";
-    }
-    json << "],\"maxFileSize\":" << newMaxSize << "}";
-    return jsonResponse(200, json.str());
-}
 
 std::string HttpServer::handleRebuildSemanticIndex() {
     if (!adminCallbacks_.onRebuildSemanticIndex) {

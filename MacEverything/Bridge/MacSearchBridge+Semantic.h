@@ -23,10 +23,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)translateQuery:(NSString *)naturalLanguage;
 
 // Config
-- (void)setSemanticExtensions:(NSArray<NSString *> *)extensions;
-- (NSArray<NSString *> *)semanticExtensions;
-- (void)setSemanticMaxFileSize:(uint64_t)bytes;
-- (uint64_t)semanticMaxFileSize;
 - (uint32_t)semanticIndexedCount;
 - (void)rebuildSemanticIndex;
 

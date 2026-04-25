@@ -54,13 +54,19 @@ void ServiceEngine::startSemanticIndexing() {
     LOG_INFO("ServiceEngine", "Semantic indexing started");
 
     dispatch_group_async(backgroundGroup_, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        auto extensions = embIdx->getExtensions();
+        // Use ContentIndex config for extensions and file size
+        auto contentIdx = this->safeContentIndex();
+        if (!contentIdx) {
+            LOG_INFO("ServiceEngine", "Semantic indexing: ContentIndex not available");
+            return;
+        }
+        auto extensions = contentIdx->getExtensions();
         if (extensions.empty()) {
             LOG_INFO("ServiceEngine", "Semantic indexing: no extensions configured");
             return;
         }
 
-        uint64_t maxSize = embIdx->getMaxFileSize();
+        uint64_t maxSize = contentIdx->getMaxFileSize();
 
         // Collect eligible files
         struct FileEntry {
@@ -178,8 +184,10 @@ void ServiceEngine::updateSemanticForPath(const std::string& path, bool isRemove
         return;
     }
 
-    // Check extension eligibility
-    auto extensions = embIdx->getExtensions();
+    // Check extension eligibility (follows ContentIndex config)
+    auto contentIdx = safeContentIndex();
+    if (!contentIdx) return;
+    auto extensions = contentIdx->getExtensions();
     if (extensions.empty()) return;
 
     auto dotPos = path.rfind('.');
@@ -196,7 +204,7 @@ void ServiceEngine::updateSemanticForPath(const std::string& path, bool isRemove
     std::ifstream file(path);
     if (!file.is_open()) return;
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    if (content.empty() || content.size() > embIdx->getMaxFileSize()) return;
+    if (content.empty() || content.size() > contentIdx->getMaxFileSize()) return;
     if (content.size() > 4096) content.resize(4096);
 
     // FNV-1a hash

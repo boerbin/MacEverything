@@ -138,42 +138,6 @@
     }
 }
 
-- (void)setSemanticExtensions:(NSArray<NSString *> *)extensions {
-    auto embeddingIndex = _serviceEngine->safeEmbeddingIndex();
-    if (!embeddingIndex) return;
-    std::vector<std::string> exts;
-    exts.reserve(extensions.count);
-    for (NSString *ext in extensions) {
-        exts.push_back(std::string([ext UTF8String]));
-    }
-    embeddingIndex->setExtensions(exts);
-}
-
-- (NSArray<NSString *> *)semanticExtensions {
-    auto embeddingIndex = _serviceEngine->safeEmbeddingIndex();
-    if (!embeddingIndex) return @[];
-    auto exts = embeddingIndex->getExtensions();
-    NSMutableArray<NSString *> *result = [NSMutableArray arrayWithCapacity:exts.size()];
-    for (const auto& ext : exts) {
-        NSString *str = [NSString stringWithUTF8String:ext.c_str()];
-        if (!str) continue;
-        [result addObject:str];
-    }
-    return result;
-}
-
-- (void)setSemanticMaxFileSize:(uint64_t)bytes {
-    auto embeddingIndex = _serviceEngine->safeEmbeddingIndex();
-    if (embeddingIndex) {
-        embeddingIndex->setMaxFileSize(bytes);
-    }
-}
-
-- (uint64_t)semanticMaxFileSize {
-    auto embeddingIndex = _serviceEngine->safeEmbeddingIndex();
-    return embeddingIndex ? embeddingIndex->getMaxFileSize() : (1 * 1024 * 1024);
-}
-
 - (uint32_t)semanticIndexedCount {
     auto embeddingIndex = _serviceEngine->safeEmbeddingIndex();
     return embeddingIndex ? embeddingIndex->indexedCount() : 0;

@@ -192,18 +192,3 @@ uint32_t EmbeddingIndex::indexedCount() {
     return count;
 }
 
-void EmbeddingIndex::setExtensions(const std::vector<std::string>& exts) {
-    extensions_ = exts;
-}
-
-std::vector<std::string> EmbeddingIndex::getExtensions() const {
-    return extensions_;
-}
-
-void EmbeddingIndex::setMaxFileSize(uint64_t bytes) {
-    maxFileSize_ = bytes;
-}
-
-uint64_t EmbeddingIndex::getMaxFileSize() const {
-    return maxFileSize_;
-}
