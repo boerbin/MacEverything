@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <dispatch/dispatch.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include "RichTextExtractor.h"
 
 // --- Magic and version for binary persistence ---
 static constexpr char CONTENT_MAGIC[4] = {'M', 'E', 'C', 'I'};
@@ -145,6 +146,31 @@ std::string ContentIndex::generateSnippet(const std::string& path,
                                            uint32_t contextChars) {
     outOffset = 0;
 
+    // For rich documents, extract text and search within the extracted content
+    if (me::isRichDocExtension(path)) {
+        std::string content = me::extractRichDocText(path, 5 * 1024 * 1024);
+        if (content.empty()) return {};
+
+        // Case-insensitive search
+        std::string lowerContent = content;
+        for (auto& c : lowerContent) c = std::tolower(static_cast<unsigned char>(c));
+        std::string lowerKeyword = keyword;
+        for (auto& c : lowerKeyword) c = std::tolower(static_cast<unsigned char>(c));
+
+        size_t pos = lowerContent.find(lowerKeyword);
+        if (pos == std::string::npos) return {};
+
+        outOffset = static_cast<uint32_t>(pos);
+        size_t start = (pos > contextChars) ? pos - contextChars : 0;
+        size_t end = std::min(pos + keyword.size() + contextChars,
+                              content.size());
+        std::string result;
+        if (start > 0) result += "...";
+        result += content.substr(start, end - start);
+        if (end < content.size()) result += "...";
+        return result;
+    }
+
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return {};
 
@@ -278,6 +304,12 @@ bool ContentIndex::indexFile(uint32_t fileIndex, const std::string& fullPath, ti
 
     // Single-pass read: open file once, read content, check for binary
     std::string content = readFileIfText(fullPath, maxSize);
+
+    // For rich documents (PDF, DOCX, etc.), try specialized extraction
+    if (content.empty() && me::isRichDocExtension(fullPath)) {
+        content = me::extractRichDocText(fullPath, maxSize);
+    }
+
     if (content.empty()) {
         // File unreadable (deleted/binary/too large) but already indexed:
         // update lastModTime so future runs skip I/O via early exit
