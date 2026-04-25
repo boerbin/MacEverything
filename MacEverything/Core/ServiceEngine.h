@@ -7,6 +7,10 @@
 #include "HttpServer.h"
 #include "InstanceLock.h"
 #include "RescanDebounce.h"
+#include "EmbeddingIndex.h"
+#include "VectorSearch.h"
+#include "LiteLLMClient.h"
+#include "NLTranslator.h"
 #include <memory>
 #include <atomic>
 #include <shared_mutex>
@@ -34,6 +38,9 @@ public:
     using ContentProgressCallback = std::function<void(uint64_t indexed, uint64_t total)>;
     using ContentCompleteCallback = std::function<void(uint32_t totalIndexed)>;
     using StartupCallback = std::function<void(uint32_t totalRecords, bool didFullScan)>;
+    using FileChangeCallback = std::function<void(const std::string& path, const std::string& action)>;
+    using SemanticProgressCallback = std::function<void(uint64_t indexed, uint64_t total)>;
+    using SemanticCompleteCallback = std::function<void(uint32_t totalIndexed)>;
 
     explicit ServiceEngine(const ServiceConfig& config);
     ~ServiceEngine();
@@ -54,12 +61,19 @@ public:
     void rescanSubtree(const std::string& dir);
     void rebuildContentIndex();
     void compactIndex();
+    void startSemanticIndexing();
+    void rebuildSemanticIndex();
+    void updateSemanticForPath(const std::string& path, bool isRemove, std::shared_ptr<SearchEngine> engine);
 
     // ── Thread-safe accessors ──
     std::shared_ptr<SearchEngine> safeEngine();
     std::shared_ptr<ContentIndex> safeContentIndex();
     std::shared_ptr<IndexPersistence> safePersistence();
     std::shared_ptr<ContentIndexPersistence> safeContentPersistence();
+    std::shared_ptr<EmbeddingIndex> safeEmbeddingIndex();
+    std::shared_ptr<VectorSearch> safeVectorSearch();
+    std::shared_ptr<LiteLLMClient> safeLiteLLMClient();
+    std::shared_ptr<NLTranslator> safeNLTranslator();
 
     // ── State queries ──
     bool isScanning() const  { return isScanning_.load(std::memory_order_relaxed); }
@@ -75,6 +89,9 @@ public:
     ScanProgressCallback onScanProgress;
     ContentProgressCallback onContentIndexProgress;
     ContentCompleteCallback onContentIndexComplete;
+    FileChangeCallback onFileChanged;
+    SemanticProgressCallback onSemanticIndexProgress;
+    SemanticCompleteCallback onSemanticIndexComplete;
 
     // ── Admin callbacks for HttpServer ──
     HttpServer::AdminCallbacks adminCallbacks;
@@ -116,6 +133,10 @@ private:
     std::shared_ptr<SearchEngine> engine_;
     std::shared_ptr<FileSystemWatcher> watcher_;
     std::shared_ptr<ContentIndex> contentIndex_;
+    std::shared_ptr<EmbeddingIndex> embeddingIndex_;
+    std::shared_ptr<VectorSearch> vectorSearch_;
+    std::shared_ptr<LiteLLMClient> litellmClient_;
+    std::shared_ptr<NLTranslator> nlTranslator_;
     std::shared_ptr<IndexPersistence> persistence_;
     std::shared_ptr<ContentIndexPersistence> contentPersistence_;
     std::shared_ptr<HttpServer> httpServer_;
@@ -124,6 +145,7 @@ private:
     // ── Thread safety ──
     std::shared_mutex engineMutex_;
     std::shared_mutex contentMutex_;
+    std::shared_mutex semanticMutex_;
     std::shared_mutex persistenceMutex_;
     std::shared_mutex contentPersistenceMutex_;
 
@@ -141,6 +163,8 @@ private:
     std::atomic<bool> cancelContentIndexing_{false};
     std::atomic<uint64_t> contentIndexGeneration_{0};
     dispatch_semaphore_t contentIndexingSemaphore_;
+    std::atomic<bool> cancelSemanticIndexing_{false};
+    std::atomic<uint64_t> semanticIndexGeneration_{0};
 
     // ── Rescan debounce state ──
     std::mutex pendingRescanMutex_;

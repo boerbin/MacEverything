@@ -156,6 +156,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// Called on the main queue when content indexing completes.
 @property (nonatomic, copy, nullable) void (^onContentIndexComplete)(uint32_t totalIndexed);
 
+/// Called on the main queue periodically during semantic indexing with progress.
+@property (nonatomic, copy, nullable) void (^onSemanticIndexProgress)(uint32_t indexed, uint32_t total);
+
+/// Called on the main queue when semantic indexing completes.
+@property (nonatomic, copy, nullable) void (^onSemanticIndexComplete)(uint32_t totalIndexed);
+
 @end
 
 NS_ASSUME_NONNULL_END

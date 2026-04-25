@@ -60,6 +60,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem(title: "Rebuild Index", action: #selector(rebuildIndex), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Shortcut Settings...", action: #selector(openShortcutSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Content Settings...", action: #selector(openContentSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "AI Settings...", action: #selector(openAISettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Semantic Settings...", action: #selector(openSemanticSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Search Syntax Help...", action: #selector(openSearchSyntaxHelp), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Setup AI...", action: #selector(openAISetup), keyEquivalent: ""))
 
@@ -121,6 +123,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openContentSettings() {
         NSApp.activate(ignoringOtherApps: true)
         ContentSettingsWindowController.shared.showWindow()
+    }
+
+    @objc private func openAISettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        AISettingsWindowController.shared.showWindow()
+    }
+
+    @objc private func openSemanticSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        SemanticSettingsWindowController.shared.showWindow()
     }
 
     @objc private func openSearchSyntaxHelp() {

@@ -1,6 +1,10 @@
 #include "HttpServer.h"
 #include "SearchEngine.h"
 #include "ContentIndex.h"
+#include "EmbeddingIndex.h"
+#include "VectorSearch.h"
+#include "LiteLLMClient.h"
+#include "NLTranslator.h"
 #include "Logger.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -170,6 +174,14 @@ void HttpServer::setAdminCallbacks(AdminCallbacks callbacks) {
     adminCallbacks_ = std::move(callbacks);
 }
 
+void HttpServer::setSemanticGetters(EmbeddingIndexGetter eig, VectorSearchGetter vsg,
+                                    LiteLLMClientGetter lcg, NLTranslatorGetter ntg) {
+    getEmbeddingIndex_ = std::move(eig);
+    getVectorSearch_ = std::move(vsg);
+    getLiteLLMClient_ = std::move(lcg);
+    getNLTranslator_ = std::move(ntg);
+}
+
 // ---------------------------------------------------------------------------
 // Accept loop & connection handling
 // ---------------------------------------------------------------------------
@@ -322,6 +334,14 @@ std::string HttpServer::route(const HttpRequest& req) {
             return handleHealth();
         } else if (req.path == "/api/content/config") {
             return handleGetContentConfig();
+        } else if (req.path == "/api/search/semantic") {
+            return handleSemanticSearch(req.query);
+        } else if (req.path == "/api/search/similar") {
+            return handleSimilarSearch(req.query);
+        } else if (req.path == "/api/ai/status") {
+            return handleAIStatus();
+        } else if (req.path == "/api/semantic/config") {
+            return handleGetContentConfig();  // semantic shares content config
         }
     } else if (req.method == "POST") {
         if (req.path == "/api/index/rebuild") {
@@ -330,6 +350,12 @@ std::string HttpServer::route(const HttpRequest& req) {
             return handleRebuildContentIndex();
         } else if (req.path == "/api/content/config") {
             return handleSetContentConfig(req.body);
+        } else if (req.path == "/api/ai/translate") {
+            return handleAITranslate(req.body);
+        } else if (req.path == "/api/semantic/config") {
+            return errorResponse(400, "Semantic config is shared with content config. Use POST /api/content/config instead.");
+        } else if (req.path == "/api/semantic/rebuild") {
+            return handleRebuildSemanticIndex();
         }
     } else {
         return errorResponse(405, "Method not allowed");
@@ -616,6 +642,257 @@ std::string HttpServer::handleSetContentConfig(const std::string& body) {
     }
     json << "],\"maxFileSize\":" << newMaxSize << "}";
     return jsonResponse(200, json.str());
+}
+
+// ---------------------------------------------------------------------------
+// Semantic / AI endpoint handlers
+// ---------------------------------------------------------------------------
+
+std::string HttpServer::handleSemanticSearch(
+        const std::unordered_map<std::string, std::string>& params) {
+    auto qIt = params.find("q");
+    if (qIt == params.end() || qIt->second.empty()) {
+        return errorResponse(400, "Missing required parameter: q");
+    }
+    const std::string& query = qIt->second;
+
+    int limit = 20;
+    auto lIt = params.find("limit");
+    if (lIt != params.end()) {
+        char* endptr = nullptr;
+        long v = std::strtol(lIt->second.c_str(), &endptr, 10);
+        if (endptr != lIt->second.c_str() && v > 0) limit = static_cast<int>(std::min(v, 1000L));
+    }
+
+    if (!getLiteLLMClient_) return errorResponse(503, "Semantic search not configured");
+    auto client = getLiteLLMClient_();
+    if (!client) return errorResponse(503, "LiteLLM client not available");
+
+    if (!getVectorSearch_) return errorResponse(503, "Semantic search not configured");
+    auto vs = getVectorSearch_();
+    if (!vs) return errorResponse(503, "Vector search not available");
+
+    // Embed the query
+    std::vector<float> queryVec;
+    try {
+        queryVec = client->embed("embed", query);
+    } catch (const std::exception& e) {
+        return errorResponse(502, std::string("Embedding failed: ") + e.what());
+    } catch (...) {
+        return errorResponse(502, "Embedding failed: unknown error");
+    }
+    if (queryVec.empty()) {
+        return errorResponse(502, "Embedding returned empty vector");
+    }
+
+    auto results = vs->search(queryVec, limit);
+
+    auto engine = getEngine_();
+
+    std::ostringstream json;
+    json << "{\"results\":[";
+    json << std::fixed << std::setprecision(4);
+
+    bool first = true;
+    for (const auto& r : results) {
+        if (!engine) break;
+        FileRecord rec = engine->getRecord(r.id);
+        if (rec.type == 0) continue; // tombstoned
+        std::string dirPath = engine->resolveRecordPath(r.id);
+        std::string fullPath = SearchEngine::makeFullPath(dirPath, rec.name);
+
+        if (!first) json << ',';
+        first = false;
+        json << "{\"name\":\"" << jsonEscapeString(rec.name) << "\""
+             << ",\"path\":\"" << jsonEscapeString(fullPath) << "\""
+             << ",\"type\":" << static_cast<int>(rec.type)
+             << ",\"size\":" << rec.size
+             << ",\"modTime\":" << rec.modTime
+             << ",\"similarity\":" << r.similarity
+             << ",\"matchType\":\"semantic\""
+             << "}";
+    }
+
+    json << "],\"count\":" << results.size() << "}";
+    return jsonResponse(200, json.str());
+}
+
+std::string HttpServer::handleSimilarSearch(
+        const std::unordered_map<std::string, std::string>& params) {
+    auto pIt = params.find("path");
+    if (pIt == params.end() || pIt->second.empty()) {
+        return errorResponse(400, "Missing required parameter: path");
+    }
+    const std::string& filePath = pIt->second;
+
+    int limit = 10;
+    auto lIt = params.find("limit");
+    if (lIt != params.end()) {
+        char* endptr = nullptr;
+        long v = std::strtol(lIt->second.c_str(), &endptr, 10);
+        if (endptr != lIt->second.c_str() && v > 0) limit = static_cast<int>(std::min(v, 1000L));
+    }
+
+    if (!getEmbeddingIndex_) return errorResponse(503, "Semantic search not configured");
+    auto embIdx = getEmbeddingIndex_();
+    if (!embIdx) return errorResponse(503, "Embedding index not available");
+
+    if (!getVectorSearch_) return errorResponse(503, "Semantic search not configured");
+    auto vs = getVectorSearch_();
+    if (!vs) return errorResponse(503, "Vector search not available");
+
+    // Look up the file's stored embedding
+    std::vector<float> fileVec;
+    if (!embIdx->getEmbedding(filePath, fileVec)) {
+        return errorResponse(404, "No embedding found for the specified file");
+    }
+
+    // Search for similar vectors (request one extra to filter out the anchor)
+    auto results = vs->search(fileVec, limit + 1);
+
+    auto engine = getEngine_();
+
+    // Extract anchor filename
+    std::string anchorName = filePath;
+    auto slashPos = filePath.rfind('/');
+    if (slashPos != std::string::npos) {
+        anchorName = filePath.substr(slashPos + 1);
+    }
+
+    std::ostringstream json;
+    json << "{\"anchor\":\"" << jsonEscapeString(anchorName) << "\",\"results\":[";
+    json << std::fixed << std::setprecision(4);
+
+    bool first = true;
+    int count = 0;
+    for (const auto& r : results) {
+        if (!engine) break;
+        if (count >= limit) break;
+
+        FileRecord rec = engine->getRecord(r.id);
+        if (rec.type == 0) continue; // tombstoned
+        std::string dirPath = engine->resolveRecordPath(r.id);
+        std::string fullPath = SearchEngine::makeFullPath(dirPath, rec.name);
+
+        // Skip the anchor file itself
+        if (fullPath == filePath) continue;
+
+        if (!first) json << ',';
+        first = false;
+        json << "{\"name\":\"" << jsonEscapeString(rec.name) << "\""
+             << ",\"path\":\"" << jsonEscapeString(fullPath) << "\""
+             << ",\"type\":" << static_cast<int>(rec.type)
+             << ",\"size\":" << rec.size
+             << ",\"modTime\":" << rec.modTime
+             << ",\"similarity\":" << r.similarity
+             << "}";
+        ++count;
+    }
+
+    json << "],\"count\":" << count << "}";
+    return jsonResponse(200, json.str());
+}
+
+std::string HttpServer::handleAITranslate(const std::string& body) {
+    if (!getNLTranslator_) return errorResponse(503, "AI translation not configured");
+    auto translator = getNLTranslator_();
+    if (!translator) return errorResponse(503, "NL translator not available");
+
+    // Parse JSON body for "query" field
+    std::string query;
+    auto qPos = body.find("\"query\"");
+    if (qPos == std::string::npos) {
+        return errorResponse(400, "Missing required field: query");
+    }
+    // Find the string value after "query":
+    auto colonPos = body.find(':', qPos + 7);
+    if (colonPos != std::string::npos) {
+        auto valStart = body.find('"', colonPos + 1);
+        if (valStart != std::string::npos) {
+            // Find closing quote (handle escaped quotes)
+            size_t valEnd = valStart + 1;
+            while (valEnd < body.size()) {
+                if (body[valEnd] == '\\') { valEnd += 2; continue; }
+                if (body[valEnd] == '"') break;
+                ++valEnd;
+            }
+            if (valEnd < body.size()) {
+                query = body.substr(valStart + 1, valEnd - valStart - 1);
+            }
+        }
+    }
+
+    if (query.empty()) {
+        return errorResponse(400, "Empty query");
+    }
+
+    TranslationResult result;
+    try {
+        result = translator->translate(query);
+    } catch (const std::exception& e) {
+        std::ostringstream json;
+        json << "{\"original_query\":\"" << jsonEscapeString(query) << "\""
+             << ",\"translated_query\":\"\""
+             << ",\"success\":false"
+             << ",\"already_syntax\":false"
+             << ",\"error\":\"" << jsonEscapeString(e.what()) << "\"}";
+        return jsonResponse(200, json.str());
+    } catch (...) {
+        std::ostringstream json;
+        json << "{\"original_query\":\"" << jsonEscapeString(query) << "\""
+             << ",\"translated_query\":\"\""
+             << ",\"success\":false"
+             << ",\"already_syntax\":false"
+             << ",\"error\":\"Unknown translation error\"}";
+        return jsonResponse(200, json.str());
+    }
+
+    std::ostringstream json;
+    json << "{\"original_query\":\"" << jsonEscapeString(result.originalQuery) << "\""
+         << ",\"translated_query\":\"" << jsonEscapeString(result.translatedQuery) << "\""
+         << ",\"success\":" << (result.success ? "true" : "false")
+         << ",\"already_syntax\":" << (result.alreadySyntax ? "true" : "false")
+         << ",\"error\":\"" << jsonEscapeString(result.error) << "\"}";
+    return jsonResponse(200, json.str());
+}
+
+std::string HttpServer::handleAIStatus() {
+    bool litellmAvailable = false;
+    uint32_t indexedCount = 0;
+
+    if (getLiteLLMClient_) {
+        auto client = getLiteLLMClient_();
+        if (client) {
+            try {
+                litellmAvailable = client->isAvailable();
+            } catch (...) {
+                litellmAvailable = false;
+            }
+        }
+    }
+
+    if (getEmbeddingIndex_) {
+        auto embIdx = getEmbeddingIndex_();
+        if (embIdx) {
+            indexedCount = embIdx->indexedCount();
+        }
+    }
+
+    std::ostringstream json;
+    json << "{\"status\":\"ok\""
+         << ",\"litellm_available\":" << (litellmAvailable ? "true" : "false")
+         << ",\"indexed_count\":" << indexedCount
+         << ",\"embedding_model\":\"embed\"}";
+    return jsonResponse(200, json.str());
+}
+
+
+std::string HttpServer::handleRebuildSemanticIndex() {
+    if (!adminCallbacks_.onRebuildSemanticIndex) {
+        return errorResponse(503, "Admin callbacks not configured");
+    }
+    adminCallbacks_.onRebuildSemanticIndex();
+    return jsonResponse(202, "{\"message\":\"Semantic index rebuild started\"}");
 }
 
 // ---------------------------------------------------------------------------
