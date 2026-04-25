@@ -73,6 +73,13 @@ void ServiceEngine::applyFSEvents(
         updateContentForPath(path, isRemove, engine);
     }
 
+    // Notify AI layer of file changes
+    if (onFileChanged) {
+        for (const auto& [path, isRemove] : contentUpdates) {
+            onFileChanged(path, isRemove ? "remove" : "update");
+        }
+    }
+
     // Apply all search engine mutations in a single lock acquisition
     engine->batchMutate(std::move(ops));
 }
@@ -167,6 +174,13 @@ void ServiceEngine::startMonitoring() {
         // Apply content index updates (uses its own lock)
         for (const auto& [path, isRemove] : contentUpdates) {
             updateContentForPath(path, isRemove, engine);
+        }
+
+        // Notify AI layer of file changes
+        if (this->onFileChanged) {
+            for (const auto& [path, isRemove] : contentUpdates) {
+                this->onFileChanged(path, isRemove ? "remove" : "update");
+            }
         }
 
         // Apply all search engine mutations in a single lock acquisition
