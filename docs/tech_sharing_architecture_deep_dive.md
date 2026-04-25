@@ -43,24 +43,63 @@ MacEverything 是 macOS 上的全盘文件名搜索工具，对标 Windows 平�
 
 ## 2. 整体架构
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        SwiftUI App Layer                         │
-│  SearchViewModel (debounce 80ms) ← NSNotification ← Bridge      │
-├──────────────────────────────────────────────────────────────────┤
-│                    ObjC++ Bridge (Singleton)                      │
-│  MacSearchBridge: C++ types ↔ Foundation types, main queue dispatch│
-├──────────────────────────────────────────────────────────────────┤
-│                      ServiceEngine (GCD)                         │
-│  生命周期管理 | 组件编排 | 回调分发 | 后台同步                        │
-├──────────┬──────────┬──────────┬──────────┬─────────────────────┤
-│ Search   │Directory │FileSystem│Content   │ HTTP Server         │
-│ Engine   │Scanner   │Watcher   │Index     │ (localhost:19860)   │
-│          │          │(FSEvents)│          │                     │
-├──────────┴──────────┴──────────┴──────────┴─────────────────────┤
-│                    Persistence Layer                              │
-│  v6 FlatIndex | PagedIndex(v5) | WAL | Adaptive Compaction       │
-└──────────────────────────────────────────────────────────────────┘
+```dot
+digraph architecture {
+    rankdir=TB
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=11]
+    edge [fontname="Helvetica", fontsize=9]
+    compound=true
+
+    subgraph cluster_app {
+        label="SwiftUI App Layer"
+        style="filled,rounded"; color="#4A90D9"; fillcolor="#E3F2FD"
+        fontname="Helvetica Bold"
+        SearchViewModel [label="SearchViewModel\n(debounce 80ms)", fillcolor="#BBDEFB"]
+        NSNotif [label="NSNotification", fillcolor="#BBDEFB"]
+        SearchViewModel -> NSNotif [label="监听", dir=back]
+    }
+
+    subgraph cluster_bridge {
+        label="ObjC++ Bridge (Singleton)"
+        style="filled,rounded"; color="#66BB6A"; fillcolor="#E8F5E9"
+        fontname="Helvetica Bold"
+        Bridge [label="MacSearchBridge\nC++ types ↔ Foundation types\nmain queue dispatch", fillcolor="#C8E6C9"]
+    }
+
+    subgraph cluster_service {
+        label="ServiceEngine (GCD)"
+        style="filled,rounded"; color="#FF9800"; fillcolor="#FFF3E0"
+        fontname="Helvetica Bold"
+        SE [label="生命周期管理 | 组件编排\n回调分发 | 后台同步", fillcolor="#FFE0B2"]
+    }
+
+    subgraph cluster_core {
+        label="Core Components"
+        style="filled,rounded"; color="#E91E63"; fillcolor="#FCE4EC"
+        fontname="Helvetica Bold"
+        Search [label="Search\nEngine", fillcolor="#F8BBD0"]
+        Scanner [label="Directory\nScanner", fillcolor="#F8BBD0"]
+        Watcher [label="FileSystem\nWatcher\n(FSEvents)", fillcolor="#F8BBD0"]
+        Content [label="Content\nIndex", fillcolor="#F8BBD0"]
+        HTTP [label="HTTP Server\n:19860", fillcolor="#F8BBD0"]
+    }
+
+    subgraph cluster_persist {
+        label="Persistence Layer"
+        style="filled,rounded"; color="#9C27B0"; fillcolor="#F3E5F5"
+        fontname="Helvetica Bold"
+        V6 [label="v6 FlatIndex", fillcolor="#E1BEE7"]
+        V5 [label="PagedIndex(v5)", fillcolor="#E1BEE7"]
+        WAL [label="WAL", fillcolor="#E1BEE7"]
+        Compact [label="Adaptive\nCompaction", fillcolor="#E1BEE7"]
+    }
+
+    NSNotif -> Bridge
+    Bridge -> SE
+    SE -> {Search Scanner Watcher Content HTTP}
+    Search -> {V6 V5 WAL}
+    WAL -> Compact [style=dashed, label="触发"]
+}
 ```
 
 **分层职责：**
@@ -171,20 +210,40 @@ macOS 提供三种目录遍历 API：
 
 ### 并行扫描架构
 
-```
-DirectoryScanner 并行模型（DirectoryScanner.cpp）：
+```dot
+// DirectoryScanner 并行模型（DirectoryScanner.cpp）
+digraph scanner {
+    rankdir=TB
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=11]
+    edge [fontname="Helvetica", fontsize=9]
+    compound=true
 
-┌─────────────────────────────────────────┐
-│              Shared Queue               │
-│  ["/", "/Users", "/Applications", ...]  │
-│      protected by mutex + condvar       │
-├─────┬─────┬─────┬─────┬────────────────┤
-│ T0  │ T1  │ T2  │ T3  │  ... (4-32)    │
-│     │     │     │     │                 │
-│ getattrlistbulk    per-thread 1MB buf   │
-│ ↓ results → push subdirs to queue      │
-│ ↓ results → batch push to output       │
-└─────┴─────┴─────┴─────┴────────────────┘
+    subgraph cluster_queue {
+        label="Shared Queue (mutex + condvar)"
+        style="filled,rounded"; color="#1565C0"; fillcolor="#E3F2FD"
+        fontname="Helvetica Bold"
+        Queue [label="[\"/\", \"/Users\", \"/Applications\", ...]"
+               shape=record, fillcolor="#BBDEFB"]
+    }
+
+    subgraph cluster_threads {
+        label="Worker Threads (4 ~ 32)"
+        style="filled,rounded"; color="#2E7D32"; fillcolor="#E8F5E9"
+        fontname="Helvetica Bold"
+        T0 [label="T0\ngetattrlistbulk\n1MB buffer", fillcolor="#C8E6C9"]
+        T1 [label="T1\ngetattrlistbulk\n1MB buffer", fillcolor="#C8E6C9"]
+        T2 [label="T2\ngetattrlistbulk\n1MB buffer", fillcolor="#C8E6C9"]
+        TN [label="T(N)\ngetattrlistbulk\n1MB buffer", fillcolor="#C8E6C9"]
+    }
+
+    Output [label="Output Buffer\n(batch push)", shape=cylinder,
+            fillcolor="#FFF9C4", style=filled]
+
+    Queue -> {T0 T1 T2 TN} [label="取目录"]
+    T0 -> Queue [label="推子目录", style=dashed, color="#E65100"]
+    T1 -> Queue [style=dashed, color="#E65100"]
+    {T0 T1 T2 TN} -> Output [label="批量结果"]
+}
 ```
 
 - 线程数：`min(hardware_concurrency, 32)`，下限 4
@@ -206,37 +265,46 @@ DirectoryScanner 并行模型（DirectoryScanner.cpp）：
 
 ### 查询执行管线
 
-```
-SearchEngineAdvancedQuery.cpp 执行流程：
+```dot
+// SearchEngineAdvancedQuery.cpp 执行流程
+digraph query_pipeline {
+    rankdir=TB
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
 
-输入: "test ext:cpp"
-  │
-  ▼
-┌──────────────────────┐
-│ 1. 解析为 AST        │  QueryParser: recursive descent
-│    AND(term:"test",  │
-│        filter:ext=cpp)│
-├──────────────────────┤
-│ 2. AST 变换          │  slash → structured, wildcard → glob
-├──────────────────────┤
-│ 3. 需求分析          │  QueryNeedsAnalysis: 需要 name trigram?
-│                      │  需要 regex? 需要 path match?
-├──────────────────────┤
-│ 4. 竞争候选集选择    │  5 个 Stage 竞争，选最小
-│                      │
-│  Stage 1: name trigram → "tes","est" → 交集 → N1 候选
-│  Stage 2: regex trigram → (不适用)
-│  Stage 3: path trigram → (不适用)
-│  Stage 4: ext index   → "cpp" → N4 候选
-│  Stage 5: 取 min(N1, N4)
-│                      │
-│  假设 N1=2000, N4=50000 → 选 Stage 1
-├──────────────────────┤
-│ 5. 并行求值          │  dispatch_apply 多线程
-│    对每个候选:        │  eval AST → match name + check filter
-├──────────────────────┤
-│ 6. 优先级排序        │  0=精确, 1=前缀, 2=包含, 3=仅路径
-└──────────────────────┘
+    Input [label="输入: \"test ext:cpp\"", shape=ellipse, fillcolor="#E3F2FD", style=filled]
+
+    Parse [label="1. 解析为 AST\nQueryParser: recursive descent\nAND(term:\"test\", filter:ext=cpp)"
+           fillcolor="#BBDEFB"]
+
+    Transform [label="2. AST 变换\nslash → structured, wildcard → glob"
+               fillcolor="#C8E6C9"]
+
+    Analyze [label="3. 需求分析 (QueryNeedsAnalysis)\ntrigram? regex? path match?"
+             fillcolor="#FFF9C4"]
+
+    subgraph cluster_compete {
+        label="4. 竞争候选集选择 — 5 个 Stage 竞争，选最小"
+        style="filled,rounded"; color="#FF9800"; fillcolor="#FFF3E0"
+        fontname="Helvetica Bold"
+        S1 [label="Stage 1: name trigram\n\"tes\",\"est\" → 交集 → N1=2000", fillcolor="#FFE0B2"]
+        S2 [label="Stage 2: regex trigram\n(不适用)", fillcolor="#FFE0B2", fontcolor="#999999"]
+        S3 [label="Stage 3: path trigram\n(不适用)", fillcolor="#FFE0B2", fontcolor="#999999"]
+        S4 [label="Stage 4: ext index\n\"cpp\" → N4=50000", fillcolor="#FFE0B2"]
+        Winner [label="Stage 5: min(N1, N4)\nN1=2000 胜出", fillcolor="#FFCC80"]
+    }
+
+    Eval [label="5. 并行求值\ndispatch_apply 多线程\n对每个候选: eval AST → match + filter"
+          fillcolor="#F8BBD0"]
+
+    Sort [label="6. 优先级排序\n0=精确 1=前缀 2=包含 3=仅路径"
+          fillcolor="#E1BEE7"]
+
+    Input -> Parse -> Transform -> Analyze
+    Analyze -> {S1 S2 S3 S4}
+    {S1 S2 S3 S4} -> Winner
+    Winner -> Eval -> Sort
+}
 ```
 
 ### 搜索路径对比
@@ -250,6 +318,50 @@ advanced-trigram       6.9           hello ext:cpp（trigram + filter）
 structured             31.8          /usr/local/bin（路径分段查询）
 linear                 57.8          ab（<3 字符，无法用 trigram）
 pure-filter-soa-gcd    104.5         type:folder（全量 SoA 扫描）
+```
+
+### 搜索路径决策树
+
+查询进入时，引擎根据查询特征自动选择最优搜索路径：
+
+```dot
+// 搜索路径自动决策树
+digraph search_decision {
+    rankdir=TB
+    node [shape=diamond, style="filled,rounded", fontname="Helvetica", fontsize=10, fillcolor="#FFF9C4"]
+    edge [fontname="Helvetica", fontsize=9]
+
+    Start [label="查询输入", shape=ellipse, fillcolor="#E3F2FD"]
+
+    HasText [label="含文本\n搜索词?"]
+    HasAdvanced [label="含高级语法?\n| ! < > \" filter:"]
+    LenGE3 [label="搜索词\n≥ 3 字符?"]
+    IsGlob [label="含 glob\n模式?"]
+    HasSlash [label="含 / ?\n(路径查询)"]
+    OnlyFilter [label="仅过滤条件?\next: size: type:"]
+
+    // 叶子节点 — 搜索路径
+    GlobTri [label="glob-trigram\n~0.1ms", shape=box, fillcolor="#A5D6A7"]
+    Trigram [label="trigram\n~4.1ms", shape=box, fillcolor="#A5D6A7"]
+    AdvTri [label="advanced-trigram\n~6.9ms", shape=box, fillcolor="#C8E6C9"]
+    Structured [label="structured\n~31.8ms", shape=box, fillcolor="#FFE0B2"]
+    Linear [label="linear\n~57.8ms", shape=box, fillcolor="#FFCDD2"]
+    PureFilter [label="pure-filter-soa-gcd\n~104.5ms", shape=box, fillcolor="#FFCDD2"]
+
+    Start -> HasText
+    HasText -> OnlyFilter [label="否"]
+    OnlyFilter -> PureFilter [label="是"]
+    HasText -> HasAdvanced [label="是"]
+    HasAdvanced -> LenGE3 [label="否 (简单查询)"]
+    HasAdvanced -> HasSlash [label="是"]
+    HasSlash -> Structured [label="是"]
+    HasSlash -> LenGE3 [label="否"]
+    LenGE3 -> IsGlob [label="是"]
+    LenGE3 -> Linear [label="否 (<3字符)"]
+    IsGlob -> GlobTri [label="是 (*.py)"]
+    IsGlob -> Trigram [label="否 (简单)"]
+    OnlyFilter -> AdvTri [label="否\n(text + filter)"]
+}
 ```
 
 ### 纯过滤快速路径
@@ -303,6 +415,56 @@ Trigram = (a << 16) | (b << 8) | c;
 - **多段交集**（`intersectPostingListsMulti`）：glob 模式 `*test*.cpp` 的字面段 `["test", "cpp"]` 分别提取 trigram 后做交集
 - **并集**（`unionPostingListsMulti`）：正则模式 `(foo|bar)` 的每个分支内部做交集，分支间做并集
 - **竞争选择**：5 个 Stage 各自产生候选集，选最小的那个
+
+### Trigram 查询求值流程
+
+以查询 `*test*.cpp` 为例，展示 trigram 多段交集的完整求值过程：
+
+```dot
+// Trigram 查询求值流程: *test*.cpp
+digraph trigram_eval {
+    rankdir=TB
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
+
+    Query [label="查询: *test*.cpp", shape=ellipse, fillcolor="#E3F2FD", style=filled]
+
+    Extract [label="提取字面段\n[\"test\", \"cpp\"]", fillcolor="#BBDEFB"]
+
+    subgraph cluster_seg1 {
+        label="段 1: \"test\""
+        style="filled,rounded"; color="#2E7D32"; fillcolor="#E8F5E9"
+        fontname="Helvetica Bold"
+        Tri1 [label="trigrams: {tes, est}", fillcolor="#C8E6C9"]
+        P1 [label="posting[tes]\n[23, 89, 1024, 5678, ...]", fillcolor="#C8E6C9"]
+        P2 [label="posting[est]\n[23, 456, 1024, ...]", fillcolor="#C8E6C9"]
+        I1 [label="intersect → [23, 1024, ...]", fillcolor="#A5D6A7"]
+        Tri1 -> {P1 P2}
+        {P1 P2} -> I1
+    }
+
+    subgraph cluster_seg2 {
+        label="段 2: \"cpp\""
+        style="filled,rounded"; color="#1565C0"; fillcolor="#E3F2FD"
+        fontname="Helvetica Bold"
+        Tri2 [label="trigrams: {cpp}", fillcolor="#BBDEFB"]
+        P3 [label="posting[cpp]\n[23, 77, 1024, 8888, ...]", fillcolor="#BBDEFB"]
+        I2 [label="直接使用 → [23, 77, 1024, ...]", fillcolor="#81D4FA"]
+        Tri2 -> P3 -> I2
+    }
+
+    Final [label="段间交集\nintersect(seg1, seg2)\n→ [23, 1024]", fillcolor="#FFE0B2"]
+    Verify [label="SIMD 子串验证\n对候选逐个 memcmp", fillcolor="#F8BBD0"]
+    Result [label="最终结果\n从 4.86M → 2 个命中", fillcolor="#E1BEE7"]
+
+    Query -> Extract
+    Extract -> Tri1
+    Extract -> Tri2
+    I1 -> Final
+    I2 -> Final
+    Final -> Verify -> Result
+}
+```
 
 ### 关键限制
 
@@ -424,18 +586,31 @@ atom      = '<' or_expr '>'               // 分组（用 < > 而非括号）
 
 ### AST 变换管线
 
-```
-"usr/local test"
-  ↓ tokenize
-[WORD:"usr/local", WORD:"test"]
-  ↓ parse
-AND(term:"usr/local", term:"test")
-  ↓ ASTStructuredTransform（检测含 / 的 term）
-AND(structured:{segments:["usr","local"]}, term:"test")
-  ↓ ASTGlobTransform（检测含 * ? 的 term）
-（本例不变）
-  ↓ QueryNeedsAnalysis
-{needsPath: true, needsName: true, ...}
+```dot
+// AST 变换管线示例: "usr/local test"
+digraph ast_transform {
+    rankdir=TB
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
+
+    Input [label="\"usr/local test\"", shape=ellipse, fillcolor="#E3F2FD", style=filled]
+
+    Tokenize [label="tokenize\n[WORD:\"usr/local\", WORD:\"test\"]"
+              fillcolor="#BBDEFB"]
+
+    Parse [label="parse\nAND(term:\"usr/local\", term:\"test\")"
+           fillcolor="#C8E6C9"]
+
+    Structured [label="ASTStructuredTransform\n检测含 / 的 term →\nAND(structured:{segments:[\"usr\",\"local\"]},\n    term:\"test\")"
+                fillcolor="#FFF9C4"]
+
+    Glob [label="ASTGlobTransform\n检测含 * ? 的 term\n(本例不变)", fillcolor="#FFE0B2"]
+
+    Needs [label="QueryNeedsAnalysis\n{needsPath: true, needsName: true, ...}"
+           fillcolor="#E1BEE7"]
+
+    Input -> Tokenize -> Parse -> Structured -> Glob -> Needs
+}
 ```
 
 ### 零开销向后兼容
@@ -448,20 +623,39 @@ AND(structured:{segments:["usr","local"]}, term:"test")
 
 ### 两阶段启动（Sub-Second Cold Start）
 
-```
-启动流程：
+```dot
+// 两阶段启动流程
+digraph startup {
+    rankdir=LR
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
 
-t=0ms    loadRecordsV6()
-         │ 读取 v6 flat file → bulk fread 11 个 section
-         │ 直接安装到 SoA vectors（zero-copy 语义）
-         │ 并行 toLower, 构建 pathIndex_
-t=200ms  Phase 1 完成 ✓ → 可以响应搜索（线性扫描）
-         │
-         │ 后台线程 Phase 2:
-         │   buildTrigramIndex()
-         │   buildPathTrigramIndex()
-         │   buildExtensionIndex()
-t=7000ms Phase 2 完成 ✓ → trigram 加速生效
+    subgraph cluster_phase1 {
+        label="Phase 1 — 主线程 (0 ~ 200ms)"
+        style="filled,rounded"; color="#1565C0"; fillcolor="#E3F2FD"
+        fontname="Helvetica Bold"
+        Load [label="loadRecordsV6()\nbulk fread 11 sections", fillcolor="#BBDEFB"]
+        Install [label="直接安装到 SoA vectors\n(zero-copy 语义)", fillcolor="#BBDEFB"]
+        Lower [label="并行 toLower\n构建 pathIndex_", fillcolor="#BBDEFB"]
+        Ready1 [label="Phase 1 完成 ✓\n可响应搜索(线性扫描)", fillcolor="#81D4FA",
+                shape=doublecircle, fontsize=9]
+        Load -> Install -> Lower -> Ready1
+    }
+
+    subgraph cluster_phase2 {
+        label="Phase 2 — 后台线程 (200ms ~ 7s)"
+        style="filled,rounded"; color="#2E7D32"; fillcolor="#E8F5E9"
+        fontname="Helvetica Bold"
+        Tri [label="buildTrigramIndex()", fillcolor="#C8E6C9"]
+        PTri [label="buildPathTrigramIndex()", fillcolor="#C8E6C9"]
+        Ext [label="buildExtensionIndex()", fillcolor="#C8E6C9"]
+        Ready2 [label="Phase 2 完成 ✓\ntrigram 加速生效", fillcolor="#A5D6A7",
+                shape=doublecircle, fontsize=9]
+        Tri -> PTri -> Ext -> Ready2
+    }
+
+    Ready1 -> Tri [style=dashed, label="dispatch_async\n(后台)", color="#E65100"]
+}
 ```
 
 Phase 1 完成后用户立即可以搜索，虽然走线性扫描（~50ms），但比等 7 秒好得多。Phase 2 完成后自动切换到 trigram 加速路径（~5ms）。
@@ -515,6 +709,57 @@ Entry: [op(1B) | dataLen(4B) | data(变长) | crc32(4B)]
 
 崩溃恢复时 `readAll()` 从头读取 WAL，遇到第一条 CRC 校验失败的 entry 即停止——保证前缀都是完整的。
 
+### 持久化生命周期
+
+从运行时变更到最终落盘的完整数据流：
+
+```dot
+// 持久化生命周期：变更 → WAL → Compaction → v6
+digraph persistence_lifecycle {
+    rankdir=LR
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
+
+    subgraph cluster_runtime {
+        label="运行时"
+        style="filled,rounded"; color="#1565C0"; fillcolor="#E3F2FD"
+        fontname="Helvetica Bold"
+        FSE [label="FSEvents\n文件变更", fillcolor="#BBDEFB"]
+        Batch [label="batchMutate()\n300-op chunks", fillcolor="#BBDEFB"]
+        SoA [label="SoA 内存数据\n(SearchEngine)", fillcolor="#81D4FA"]
+        FSE -> Batch -> SoA
+    }
+
+    subgraph cluster_wal {
+        label="WAL 层"
+        style="filled,rounded"; color="#FF9800"; fillcolor="#FFF3E0"
+        fontname="Helvetica Bold"
+        Append [label="WAL append\n+ CRC32", fillcolor="#FFE0B2"]
+        Fsync [label="fsync\n(每 64 条)", fillcolor="#FFE0B2"]
+        Append -> Fsync
+    }
+
+    subgraph cluster_compact {
+        label="Compaction 决策"
+        style="filled,rounded"; color="#9C27B0"; fillcolor="#F3E5F5"
+        fontname="Helvetica Bold"
+        Check [label="IndexPersistence\n自适应检查", fillcolor="#E1BEE7"]
+        Full [label="全量重写 v6\n(tombstone>25%\n或 dead space>50%)", fillcolor="#CE93D8"]
+        Incr [label="增量 flush\n(WAL>2MB\n或 entries>100)", fillcolor="#E1BEE7"]
+        Check -> Full [label="严重"]
+        Check -> Incr [label="一般"]
+    }
+
+    V6 [label="v6 FlatIndex\n磁盘文件\n(11 sections + CRC32)"
+        shape=cylinder, fillcolor="#A5D6A7", style=filled]
+
+    Batch -> Append [style=dashed, label="同步"]
+    Fsync -> Check [style=dashed, label="定时\n30~600s"]
+    {Full Incr} -> V6
+    V6 -> SoA [label="启动加载\n(Phase 1)", style=dotted, constraint=false]
+}
+```
+
 ### 自适应 Compaction
 
 ```
@@ -539,21 +784,33 @@ flush interval: [30s ←────────→ 600s]
 
 ### FSEvents 集成
 
-```
-FileSystemWatcher 设计（FileSystemWatcher.h/.cpp）：
+```dot
+// FileSystemWatcher 事件处理流程（FileSystemWatcher.h/.cpp）
+digraph fsevents {
+    rankdir=TB
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
 
-FSEvents API 配置:
-  latency: 300ms（合并窗口）
-  flags: FileEvents | NoDefer | UseCFTypes | IgnoreSelf
+    FSEvents [label="FSEvents callback\nlatency: 300ms | flags: FileEvents\n| NoDefer | UseCFTypes | IgnoreSelf"
+              shape=ellipse, fillcolor="#E3F2FD", style=filled]
 
-事件处理流程:
-  FSEvents callback
-    ↓ 过滤系统目录（.Spotlight-V100, .fseventsd, .Trashes）
-    ↓ 过滤自身缓存目录
-    ↓ 转换为 MutationOp（ADD/REMOVE/UPDATE）
-    ↓ batchMutate() 批量写入 SearchEngine
-    ↓ WAL 追加
-    ↓ 通知 UI 刷新
+    Filter1 [label="过滤系统目录\n.Spotlight-V100 .fseventsd .Trashes"
+             fillcolor="#FFCDD2"]
+    Filter2 [label="过滤自身缓存目录", fillcolor="#FFCDD2"]
+    Convert [label="转换为 MutationOp\nADD / REMOVE / UPDATE"
+             fillcolor="#FFF9C4"]
+    Batch [label="batchMutate()\n批量写入 SearchEngine"
+           fillcolor="#C8E6C9"]
+    WAL [label="WAL 追加", fillcolor="#E1BEE7"]
+    Notify [label="通知 UI 刷新", fillcolor="#BBDEFB"]
+
+    FSEvents -> Filter1 -> Filter2 -> Convert -> Batch -> WAL -> Notify
+
+    // 标记过滤为"丢弃"路径
+    Drop [label="丢弃", shape=plaintext, fontcolor="#D32F2F"]
+    Filter1 -> Drop [style=dashed, color="#D32F2F", label="命中"]
+    Filter2 -> Drop [style=dashed, color="#D32F2F", label="命中"]
+}
 ```
 
 ### Rescan 防抖
@@ -583,21 +840,42 @@ rescanDebounceTimer_: GCD timer    // 5s 防抖
 
 ### Reader-Writer 锁分层
 
-```
-锁层次（从外到内）：
+```dot
+// 锁层次（从外到内）
+digraph lock_hierarchy {
+    rankdir=TB
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9, label="acquires"]
 
-ServiceEngine 层:
-  engineMutex_           (shared_mutex)  保护 SearchEngine 访问
-  contentMutex_          (shared_mutex)  保护 ContentIndex 访问
-  persistenceMutex_      (shared_mutex)  保护 IndexPersistence 访问
-  contentPersistenceMutex_ (shared_mutex)
+    subgraph cluster_se {
+        label="ServiceEngine 层 (外层)"
+        style="filled,rounded"; color="#1565C0"; fillcolor="#E3F2FD"
+        fontname="Helvetica Bold"
+        engineMutex [label="engineMutex_\n(shared_mutex)\n保护 SearchEngine", fillcolor="#BBDEFB"]
+        contentMutex [label="contentMutex_\n(shared_mutex)\n保护 ContentIndex", fillcolor="#BBDEFB"]
+        persistMutex [label="persistenceMutex_\n(shared_mutex)\n保护 IndexPersistence", fillcolor="#BBDEFB"]
+        cpMutex [label="contentPersistenceMutex_\n(shared_mutex)", fillcolor="#BBDEFB"]
+    }
 
-SearchEngine 层:
-  mutex_                 (shared_mutex)  保护 SoA 数据
-  mutationQueueMutex_    (mutex)         保护 compaction 期间的 mutation 队列
+    subgraph cluster_search {
+        label="SearchEngine 层 (中层)"
+        style="filled,rounded"; color="#2E7D32"; fillcolor="#E8F5E9"
+        fontname="Helvetica Bold"
+        seMutex [label="mutex_\n(shared_mutex)\n保护 SoA 数据", fillcolor="#C8E6C9"]
+        mqMutex [label="mutationQueueMutex_\n(mutex)\ncompaction 期间队列", fillcolor="#C8E6C9"]
+    }
 
-ContentIndex 层:
-  mutex_                 (shared_mutex)  保护倒排索引
+    subgraph cluster_content {
+        label="ContentIndex 层 (内层)"
+        style="filled,rounded"; color="#9C27B0"; fillcolor="#F3E5F5"
+        fontname="Helvetica Bold"
+        ciMutex [label="mutex_\n(shared_mutex)\n保护倒排索引", fillcolor="#E1BEE7"]
+    }
+
+    engineMutex -> seMutex
+    engineMutex -> mqMutex [style=dashed, label="compaction时"]
+    contentMutex -> ciMutex
+}
 ```
 
 ### 查询并发
@@ -618,24 +896,47 @@ ContentIndex 层:
 
 Compaction 需要重组整个 SoA 存储，如果持有写锁会阻塞所有查询数秒。解法：
 
-```
-compactRecords() 三阶段 COW（SearchEngine.cpp）：
+```dot
+// compactRecords() 三阶段 COW（SearchEngine.cpp）
+digraph cow_compaction {
+    rankdir=LR
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
 
-Phase 1 (shared_lock, ~ms):
-  snapshot = deep_copy(SoA vectors, StringPools)
-  unlock
+    subgraph cluster_p1 {
+        label="Phase 1\nshared_lock (~ms)"
+        style="filled,rounded"; color="#1565C0"; fillcolor="#E3F2FD"
+        fontname="Helvetica Bold"
+        Snap [label="deep_copy\nSoA vectors\nStringPools", fillcolor="#BBDEFB"]
+        Unlock1 [label="unlock", shape=oval, fillcolor="#90CAF9"]
+        Snap -> Unlock1
+    }
 
-Phase 2 (no lock, ~seconds):
-  // 重建紧凑数据，不持有任何锁
-  newNames = compact(snapshot.namePool, liveMask)
-  newTypes = compact(snapshot.types, liveMask)
-  newTrigram = rebuild(newNames)
-  // 期间查询正常执行，mutation 进入 mutationQueue_
+    subgraph cluster_p2 {
+        label="Phase 2\nno lock (~seconds)"
+        style="filled,rounded"; color="#2E7D32"; fillcolor="#E8F5E9"
+        fontname="Helvetica Bold"
+        CompNames [label="compact(namePool, liveMask)", fillcolor="#C8E6C9"]
+        CompTypes [label="compact(types, liveMask)", fillcolor="#C8E6C9"]
+        Rebuild [label="rebuild(trigram)", fillcolor="#C8E6C9"]
+        Note [label="查询正常执行 ✓\nmutation → mutationQueue_"
+              shape=note, fillcolor="#FFF9C4", fontcolor="#E65100"]
+        CompNames -> CompTypes -> Rebuild
+    }
 
-Phase 3 (unique_lock, ~ms):
-  swap(SoA, compactedSoA)
-  replay(mutationQueue_)  // 回放 Phase 2 期间积累的增量变更
-  unlock
+    subgraph cluster_p3 {
+        label="Phase 3\nunique_lock (~ms)"
+        style="filled,rounded"; color="#C62828"; fillcolor="#FFEBEE"
+        fontname="Helvetica Bold"
+        Swap [label="swap(SoA, compactedSoA)", fillcolor="#FFCDD2"]
+        Replay [label="replay(mutationQueue_)\n回放增量变更", fillcolor="#FFCDD2"]
+        Unlock3 [label="unlock", shape=oval, fillcolor="#EF9A9A"]
+        Swap -> Replay -> Unlock3
+    }
+
+    Unlock1 -> CompNames [style=bold]
+    Rebuild -> Swap [style=bold]
+}
 ```
 
 **效果：** 写锁持有时间从 30-60 秒降低到 <100ms。查询在 Phase 2 期间完全不受影响。
