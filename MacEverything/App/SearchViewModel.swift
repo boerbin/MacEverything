@@ -55,6 +55,9 @@ class SearchViewModel: ObservableObject {
     @Published var isAISearch: Bool = false
     @Published var semanticResults: [SemanticFileItem] = []
     @Published var isSemanticSearching: Bool = false
+    @Published var isAITranslating: Bool = false
+    @Published var translatedQuery: String? = nil
+    @Published var isVectorSearch: Bool = false
     @Published var semanticIndexedCount: UInt32 = 0
     @Published var isSemanticIndexing: Bool = false
     @Published var semanticIndexProgress: (indexed: UInt32, total: UInt32)?
@@ -129,8 +132,11 @@ class SearchViewModel: ObservableObject {
         searchTask?.cancel()
         searchGeneration &+= 1
         bridge.cancelSession(Self.guiSessionId)
-        if isAISearch {
-            performSemanticSearch(searchText)
+        if isAISearch && isVectorSearch {
+            let query = String(searchText.dropFirst(7))
+            if !query.isEmpty { performSemanticSearch(query) }
+        } else if isAISearch {
+            performAITranslatedSearch(searchText)
         } else {
             performSearch(searchText)
         }
@@ -147,6 +153,9 @@ class SearchViewModel: ObservableObject {
             isAISearch = false
         }
         semanticResults = []
+        isVectorSearch = false
+        isAITranslating = false
+        translatedQuery = nil
         if !searchText.isEmpty {
             onSearchTextChanged()
         }
@@ -284,10 +293,13 @@ class SearchViewModel: ObservableObject {
             cachedResults = []
             loadedCount = 0
             isContentSearch = false
+            isVectorSearch = false
             contentResults = []
             contentKeyword = "" // H-9: reset cached keyword
             semanticResults = []
             isSemanticSearching = false
+            isAITranslating = false
+            translatedQuery = nil
             ghostSuggestion = nil
             settledTask?.cancel()
             // Cancel any in-flight queries for this GUI session
@@ -309,14 +321,39 @@ class SearchViewModel: ObservableObject {
         showingRecent = false
 
         let lowerText = text.lowercased()
-        if lowerText.hasPrefix("infile:") {
+        if isAISearch && lowerText.hasPrefix("infile:") {
+            // AI + infile: → vector/semantic search
+            isContentSearch = false
+            isVectorSearch = true
+            contentResults = []
+            contentKeyword = ""
+            displayItems = []
+            cachedResults = []
+            loadedCount = 0
+
+            let query = String(text.dropFirst(7))
+            guard !query.isEmpty else {
+                semanticResults = []
+                totalMatches = 0
+                queryTimeMs = 0
+                return
+            }
+
+            searchTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled else { return }
+                performSemanticSearch(query)
+            }
+        } else if lowerText.hasPrefix("infile:") {
+            // Normal infile: → content search
             isContentSearch = true
+            isVectorSearch = false
             displayItems = []
             cachedResults = []
             loadedCount = 0
 
             let keyword = String(text.dropFirst(7))
-            contentKeyword = keyword // H-9: cache computed keyword
+            contentKeyword = keyword
             guard !keyword.isEmpty else {
                 contentResults = []
                 totalMatches = 0
@@ -325,25 +362,25 @@ class SearchViewModel: ObservableObject {
             }
 
             searchTask = Task { @MainActor in
-                // 300ms debounce for content search (heavier)
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 guard !Task.isCancelled else { return }
                 performContentSearch(keyword)
             }
         } else {
             isContentSearch = false
+            isVectorSearch = false
             contentResults = []
-            contentKeyword = "" // H-9: reset cached keyword
+            contentKeyword = ""
 
             if isAISearch {
+                // AI default: NL translate → file name search
                 searchTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 300_000_000) // 300ms debounce (AI is heavier)
+                    try? await Task.sleep(nanoseconds: 300_000_000)
                     guard !Task.isCancelled else { return }
-                    performSemanticSearch(text)
+                    performAITranslatedSearch(text)
                 }
             } else {
                 searchTask = Task { @MainActor in
-                    // 80ms debounce
                     try? await Task.sleep(nanoseconds: 80_000_000)
                     guard !Task.isCancelled else { return }
                     performSearch(text)
@@ -418,6 +455,27 @@ class SearchViewModel: ObservableObject {
                 self.totalMatches = items.count
                 self.queryTimeMs = elapsed
                 self.isSemanticSearching = false
+            }
+        }
+    }
+
+    private func performAITranslatedSearch(_ query: String) {
+        let bridge = self.bridge
+        let gen = searchGeneration
+        isAITranslating = true
+        translatedQuery = nil
+        semanticResults = []
+        Task.detached { [weak self] in
+            let result = bridge.translateQuery(query)
+            let success = result["success"] as? Bool ?? false
+            let translated = result["translated_query"] as? String ?? query
+
+            await MainActor.run { [weak self] in
+                guard let self, self.searchGeneration == gen else { return }
+                self.isAITranslating = false
+                self.translatedQuery = success ? translated : nil
+                let searchQuery = success ? translated : query
+                self.performSearch(searchQuery)
             }
         }
     }
@@ -556,8 +614,11 @@ class SearchViewModel: ObservableObject {
 
         guard refreshThrottle.isFocused else { return }
 
-        if isAISearch && !searchText.isEmpty && !isContentSearch {
-            performSemanticSearch(searchText)
+        if isAISearch && isVectorSearch && !searchText.isEmpty {
+            let query = String(searchText.dropFirst(7))
+            if !query.isEmpty { performSemanticSearch(query) }
+        } else if isAISearch && !searchText.isEmpty && !isContentSearch {
+            performAITranslatedSearch(searchText)
         } else if !searchText.isEmpty && !isContentSearch {
             performSearch(searchText)
         } else if isContentSearch && !contentKeyword.isEmpty {

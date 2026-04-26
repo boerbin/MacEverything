@@ -107,13 +107,23 @@ struct ContentView: View {
                     if viewModel.isAISearch {
                         Text("·")
                             .foregroundColor(.secondary)
-                        Text("AI")
+                        Text(viewModel.isVectorSearch ? "AI·Vec" : "AI·NL")
                             .foregroundColor(.purple)
                             .fontWeight(.medium)
-                        Text("·")
-                            .foregroundColor(.secondary)
-                        Text("\(viewModel.semanticIndexedCount) vectors")
-                            .foregroundColor(.secondary)
+                        if viewModel.isVectorSearch {
+                            Text("·")
+                                .foregroundColor(.secondary)
+                            Text("\(viewModel.semanticIndexedCount) vectors")
+                                .foregroundColor(.secondary)
+                        }
+                        if let translated = viewModel.translatedQuery {
+                            Text("·")
+                                .foregroundColor(.secondary)
+                            Text("→ \(translated)")
+                                .foregroundColor(.purple.opacity(0.7))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                     }
                     if viewModel.isSemanticIndexing, let progress = viewModel.semanticIndexProgress {
                         Text("·")
@@ -223,13 +233,14 @@ struct ContentView: View {
                         .background(Color(nsColor: .controlBackgroundColor))
                     }
                 }
-            } else if viewModel.isAISearch && !viewModel.isContentSearch {
+            } else if viewModel.isAISearch && viewModel.isVectorSearch {
+                // AI + infile: → vector/semantic search
                 if viewModel.isSemanticSearching {
                     VStack(spacing: 8) {
                         Spacer()
                         ProgressView()
                             .controlSize(.large)
-                        Text("Searching...")
+                        Text("Vector searching...")
                             .font(.callout)
                             .foregroundColor(.secondary)
                         Spacer()
@@ -273,10 +284,21 @@ struct ContentView: View {
                         Image(systemName: "sparkles")
                             .font(.system(size: 36))
                             .foregroundColor(.purple.opacity(0.3))
-                        Text("AI search enabled — type to search")
+                        Text("AI vector search — type after infile:")
                             .foregroundColor(.secondary)
                         Spacer()
                     }
+                }
+            } else if viewModel.isAISearch && viewModel.isAITranslating {
+                // AI default: NL translating in progress
+                VStack(spacing: 8) {
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Translating query...")
+                        .font(.callout)
+                        .foregroundColor(.purple)
+                    Spacer()
                 }
             } else if viewModel.displayItems.isEmpty && !viewModel.searchText.isEmpty && viewModel.scanComplete {
                 VStack {
