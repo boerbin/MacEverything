@@ -163,6 +163,7 @@ struct HighlightedSearchField: NSViewRepresentable {
     var ghostSuggestion: String?
     var isFocused: FocusState<Bool>.Binding
     var onTab: (() -> Bool)?
+    var onEnter: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -198,8 +199,9 @@ struct HighlightedSearchField: NSViewRepresentable {
         // Single-line behavior: disable Enter/Return
         textView.isFieldEditor = true
 
-        // Tab key handling
+        // Key handling
         textView.onTabKey = context.coordinator.handleTab
+        textView.onEnterKey = context.coordinator.handleEnter
 
         // Placeholder
         textView.placeholderString = placeholder
@@ -274,6 +276,10 @@ struct HighlightedSearchField: NSViewRepresentable {
             return parent.onTab?() ?? false
         }
 
+        func handleEnter() {
+            parent.onEnter?()
+        }
+
         func applyHighlighting(_ textView: NSTextView) {
             guard let textStorage = textView.textStorage else { return }
             let fullRange = NSRange(location: 0, length: textStorage.length)
@@ -318,16 +324,22 @@ struct HighlightedSearchField: NSViewRepresentable {
 
 class HighlightedNSTextView: NSTextView {
     var onTabKey: (() -> Bool)?
+    var onEnterKey: (() -> Void)?
     var placeholderString: String = ""
     var ghostSuggestion: String? {
         didSet { needsDisplay = true }
     }
 
     override func keyDown(with event: NSEvent) {
+        // Handle Enter/Return key
+        if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
+            onEnterKey?()
+            return
+        }
         // Handle Tab key for ghost suggestion
         if event.keyCode == 48 { // Tab key
             if let handler = onTabKey, handler() {
-                return // Tab was consumed by ghost suggestion
+                return
             }
         }
         super.keyDown(with: event)
