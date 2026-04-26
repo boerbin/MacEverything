@@ -47,6 +47,64 @@ uint64_t ContentIndex::getMaxFileSize() const {
     return maxFileSize_;
 }
 
+bool ContentIndex::saveConfig(const std::string& path) const {
+    std::shared_lock lock(mutex_);
+    std::string json = "{\"maxFileSize\":";
+    json += std::to_string(maxFileSize_);
+    json += ",\"extensions\":[";
+    bool first = true;
+    for (const auto& ext : extensions_) {
+        if (!first) json += ",";
+        json += "\"" + ext + "\"";
+        first = false;
+    }
+    json += "]}";
+
+    std::string tmpPath = path + ".tmp";
+    FILE* f = fopen(tmpPath.c_str(), "w");
+    if (!f) return false;
+    fwrite(json.data(), 1, json.size(), f);
+    fclose(f);
+    return rename(tmpPath.c_str(), path.c_str()) == 0;
+}
+
+bool ContentIndex::loadConfig(const std::string& path) {
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) return false;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    if (sz <= 0 || sz > 65536) { fclose(f); return false; }
+    fseek(f, 0, SEEK_SET);
+    std::string data(static_cast<size_t>(sz), '\0');
+    fread(data.data(), 1, static_cast<size_t>(sz), f);
+    fclose(f);
+
+    std::unique_lock lock(mutex_);
+
+    // Parse maxFileSize
+    auto msPos = data.find("\"maxFileSize\":");
+    if (msPos != std::string::npos) {
+        maxFileSize_ = std::stoull(data.substr(msPos + 14));
+    }
+
+    // Parse extensions array
+    auto extPos = data.find("\"extensions\":[");
+    if (extPos != std::string::npos) {
+        extensions_.clear();
+        size_t start = extPos + 14;
+        while (true) {
+            auto q1 = data.find('"', start);
+            if (q1 == std::string::npos) break;
+            auto q2 = data.find('"', q1 + 1);
+            if (q2 == std::string::npos) break;
+            extensions_.insert(data.substr(q1 + 1, q2 - q1 - 1));
+            start = q2 + 1;
+            if (start >= data.size() || data[start] == ']') break;
+        }
+    }
+    return true;
+}
+
 // --- Helpers ---
 
 uint64_t ContentIndex::hashContent(const std::string& content) {

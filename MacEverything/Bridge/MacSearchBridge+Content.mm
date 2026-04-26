@@ -1,6 +1,7 @@
 #import "MacSearchBridge_Internal.h"
 #import "MacSearchBridge+Content.h"
 #include "Logger.h"
+#include "PathUtils.h"
 
 @implementation MacSearchBridge (Content)
 
@@ -89,12 +90,16 @@
         exts.push_back(std::string([ext UTF8String]));
     }
     contentIndex->setExtensions(exts);
+    std::string configPath = PathUtils::getDefaultCachePath() + "/content_config.json";
+    contentIndex->saveConfig(configPath);
 }
 
 - (void)setContentMaxFileSize:(uint64_t)bytes {
     auto contentIndex = _serviceEngine->safeContentIndex();
     if (contentIndex) {
         contentIndex->setMaxFileSize(bytes);
+        std::string configPath = PathUtils::getDefaultCachePath() + "/content_config.json";
+        contentIndex->saveConfig(configPath);
     }
 }
 
