@@ -43,7 +43,7 @@ final class AISetupHelper {
             case .startOllama: return "ollama serve &"
             case .pullChatModel: return "ollama pull qwen2.5:3b"
             case .pullEmbedModel: return "ollama pull bge-m3"
-            case .installLiteLLM: return "pip3 install litellm"
+            case .installLiteLLM: return "pip3 install 'litellm[proxy]'"
             case .startLiteLLM: return "litellm --config config.yaml --port 19861"
             }
         }
@@ -228,7 +228,7 @@ final class AISetupHelper {
                 if command -v litellm &> /dev/null; then
                     echo "  OK: Already installed"
                 else
-                    pip3 install litellm
+                    pip3 install 'litellm[proxy]'
                     echo "  OK: Installed"
                 fi
 
@@ -259,6 +259,9 @@ final class AISetupHelper {
         echo "  Return to MacEverything and click"
         echo "  Re-check to verify."
         echo "======================================"
+        echo ""
+        read -n 1 -s -r -p "Press any key to close this window..."
+        exit 0
         """
 
         // Write script and execute in Terminal
@@ -269,7 +272,8 @@ final class AISetupHelper {
         let appleScript = """
         tell application "Terminal"
             activate
-            do script "\(scriptPath)"
+            set newTab to do script "\(scriptPath)"
+            set current settings of newTab to settings set "Basic"
         end tell
         """
         var error: NSDictionary?
