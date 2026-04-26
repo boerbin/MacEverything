@@ -3,6 +3,9 @@
 #include "Logger.h"
 #include <algorithm>
 #include <thread>
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
 
 // ---------------------------------------------------------------------------
 // v6 Flat SoA: loadRecordsV6, completePhase2, snapshotForV6
@@ -114,6 +117,29 @@ void SearchEngine::loadRecordsV6(StringPool&& origNamePool,
 
 void SearchEngine::completePhase2() {
     if (!phase2Pending_.load(std::memory_order_acquire)) return;
+
+    // Check available memory before snapshot+build (~200 bytes/record needed)
+    {
+        std::shared_lock lock(mutex_);
+        uint64_t recordCount = types_.size();
+        uint64_t estimatedBytes = recordCount * 200; // conservative estimate
+        uint64_t availablePages = 0;
+#ifdef __APPLE__
+        vm_statistics64_data_t vmstat;
+        mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+        if (host_statistics64(mach_host_self(), HOST_VM_INFO64,
+                              (host_info64_t)&vmstat, &count) == KERN_SUCCESS) {
+            availablePages = vmstat.free_count + vmstat.inactive_count;
+        }
+        uint64_t availableBytes = availablePages * vm_page_size;
+        if (availableBytes > 0 && estimatedBytes > availableBytes / 2) {
+            LOG_WARN("SearchEngine", "Phase 2 skipped: need ~" << (estimatedBytes >> 20)
+                     << "MB but only ~" << (availableBytes >> 20) << "MB available");
+            phase2Pending_.store(false, std::memory_order_release);
+            return;
+        }
+#endif
+    }
 
     LOG_INFO("SearchEngine", "Phase 2: building trigram indices in background...");
 
