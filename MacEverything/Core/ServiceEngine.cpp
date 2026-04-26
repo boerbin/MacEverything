@@ -245,7 +245,10 @@ void ServiceEngine::startIncremental(StartupCallback completion) {
                   try {
                     if (this->shuttingDown_.load(std::memory_order_acquire)) return;
                     auto eng = this->safeEngine();
-                    if (eng) eng->completePhase2();
+                    if (eng) {
+                        auto err = eng->completePhase2();
+                        if (!err.empty() && this->onLoadError) this->onLoadError(err);
+                    }
                     if (this->onIndexChanged) this->onIndexChanged();
                   } catch (const std::exception& e) {
                     std::string msg = std::string("Trigram index build failed: ") + e.what();

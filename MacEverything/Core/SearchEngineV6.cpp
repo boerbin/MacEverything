@@ -115,8 +115,8 @@ void SearchEngine::loadRecordsV6(StringPool&& origNamePool,
              << " live), Phase 2 pending");
 }
 
-void SearchEngine::completePhase2() {
-    if (!phase2Pending_.load(std::memory_order_acquire)) return;
+std::string SearchEngine::completePhase2() {
+    if (!phase2Pending_.load(std::memory_order_acquire)) return {};
 
     // Check available memory before snapshot+build
     // Real cost per record: ~100B snapshots + ~200B trigram index + ~300B path trigram
@@ -135,10 +135,12 @@ void SearchEngine::completePhase2() {
         }
         uint64_t availableBytes = availablePages * vm_page_size;
         if (availableBytes > 0 && estimatedBytes > availableBytes * 7 / 10) {
-            LOG_WARN("SearchEngine", "Phase 2 skipped: need ~" << (estimatedBytes >> 20)
-                     << "MB but only ~" << (availableBytes >> 20) << "MB available");
+            std::string msg = "Insufficient memory for trigram index: need ~"
+                + std::to_string(estimatedBytes >> 20) + "MB but only ~"
+                + std::to_string(availableBytes >> 20) + "MB available. Close other applications to free memory.";
+            LOG_WARN("SearchEngine", msg);
             phase2Pending_.store(false, std::memory_order_release);
-            return;
+            return msg;
         }
 #endif
     }
@@ -214,6 +216,7 @@ void SearchEngine::completePhase2() {
         LOG_INFO("SearchEngine", "Phase 2 complete: replayed " << replayCount
                  << " mutations, trigram indices active");
     }
+    return {};
 }
 
 SearchEngine::V6Snapshot SearchEngine::snapshotForV6() const {

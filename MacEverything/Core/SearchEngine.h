@@ -129,7 +129,7 @@ public:
 
     /// Complete Phase 2 of two-stage startup: build trigram indices in background,
     /// then swap under lock and replay mutations that occurred during build.
-    void completePhase2();
+    std::string completePhase2();
 
     /// Whether Phase 2 is pending (trigram indices not yet built).
     bool isPhase2Pending() const { return phase2Pending_.load(std::memory_order_acquire); }
