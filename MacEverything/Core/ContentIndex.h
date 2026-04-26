@@ -68,6 +68,12 @@ public:
     /// Get current max file size.
     uint64_t getMaxFileSize() const;
 
+    /// Persist extensions + maxFileSize to a JSON config file.
+    bool saveConfig(const std::string& path) const;
+
+    /// Load extensions + maxFileSize from a JSON config file.
+    bool loadConfig(const std::string& path);
+
     // --- Persistence ---
 
     /// Save the entire content index to a binary file.

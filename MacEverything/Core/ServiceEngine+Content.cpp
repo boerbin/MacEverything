@@ -19,6 +19,8 @@ void ServiceEngine::setupContentPersistence() {
     std::string cacheDir = config_.cachePath;
     fs::create_directories(cacheDir);
 
+    contentIndex->loadConfig(cacheDir + "/content_config.json");
+
     std::string basePath = cacheDir + "/content_index.bin";
     std::string walPath  = cacheDir + "/content_index.wal";
 
