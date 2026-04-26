@@ -249,6 +249,8 @@ void ServiceEngine::startIncremental(StartupCallback completion) {
                     if (this->onIndexChanged) this->onIndexChanged();
                   } catch (const std::exception& e) {
                     LOG_ERROR("ServiceEngine", "Phase 2 index build failed: " << e.what());
+                  } catch (...) {
+                    LOG_ERROR("ServiceEngine", "Phase 2 index build failed: unknown exception");
                   }
                 });
             }
