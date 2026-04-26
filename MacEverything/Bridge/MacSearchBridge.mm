@@ -206,14 +206,57 @@
     });
 }
 
+- (void)startEngine {
+    if (_engineStarted) return;
+    _engineStarted = YES;
+    _startupFinished = NO;
+    LOG_INFO("Bridge", "startEngine: launching engine from AppDelegate");
+
+    _serviceEngine->startIncremental([self](uint32_t count, bool didFullScan) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self->_startupFinished = YES;
+            self->_startupFinishedCount = count;
+            self->_startupDidFullScan = didFullScan;
+            if (self->_startupCompletion) {
+                self->_startupCompletion(count, didFullScan ? YES : NO);
+                self->_startupCompletion = nil;
+            }
+        });
+    });
+}
+
+- (void)resetEngine {
+    _engineStarted = NO;
+    _startupFinished = NO;
+    _startupCompletion = nil;
+}
+
 - (void)startIncrementalFrom:(NSString *)rootPath
                    cachePath:(NSString *)cachePath
                      walPath:(NSString *)walPath
                   completion:(void (^)(uint32_t totalRecords, BOOL didFullScan))completion {
     [self _installCallbacks];
 
-    _serviceEngine->startIncremental([completion](uint32_t count, bool didFullScan) {
+    if (_engineStarted) {
+        if (_startupFinished) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(self->_startupFinishedCount,
+                                           self->_startupDidFullScan ? YES : NO);
+            });
+        } else {
+            _startupCompletion = [completion copy];
+        }
+        return;
+    }
+
+    _engineStarted = YES;
+    _startupFinished = NO;
+
+    _serviceEngine->startIncremental([self, completion](uint32_t count, bool didFullScan) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            self->_startupFinished = YES;
+            self->_startupFinishedCount = count;
+            self->_startupDidFullScan = didFullScan;
             if (completion) completion(count, didFullScan ? YES : NO);
         });
     });

@@ -263,6 +263,7 @@ class SearchViewModel: ObservableObject {
         try? FileManager.default.removeItem(atPath: Self.pagesPath)
         try? FileManager.default.removeItem(atPath: Self.ptablePath)
 
+        bridge.resetEngine()
         startIncremental()
     }
 
