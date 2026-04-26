@@ -235,6 +235,7 @@ final class AISetupHelper {
                 if curl -s http://localhost:19861/v1/models > /dev/null 2>&1; then
                     echo "  OK: Already running"
                 else
+                    pip3 install -q 'litellm[proxy]' 2>/dev/null
                     nohup litellm --config \(configPath) --port 19861 > /tmp/litellm.log 2>&1 &
                     sleep 3
                     if curl -s http://localhost:19861/v1/models > /dev/null 2>&1; then
