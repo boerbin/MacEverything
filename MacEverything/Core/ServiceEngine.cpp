@@ -248,9 +248,13 @@ void ServiceEngine::startIncremental(StartupCallback completion) {
                     if (eng) eng->completePhase2();
                     if (this->onIndexChanged) this->onIndexChanged();
                   } catch (const std::exception& e) {
-                    LOG_ERROR("ServiceEngine", "Phase 2 index build failed: " << e.what());
+                    std::string msg = std::string("Trigram index build failed: ") + e.what();
+                    LOG_ERROR("ServiceEngine", msg);
+                    if (this->onLoadError) this->onLoadError(msg);
                   } catch (...) {
-                    LOG_ERROR("ServiceEngine", "Phase 2 index build failed: unknown exception");
+                    std::string msg = "Trigram index build failed (possibly out of memory). Try closing other applications to free memory.";
+                    LOG_ERROR("ServiceEngine", msg);
+                    if (this->onLoadError) this->onLoadError(msg);
                   }
                 });
             }
@@ -456,8 +460,13 @@ void ServiceEngine::backgroundSyncEngine(
         });
         if (this->onIndexChanged) this->onIndexChanged();
       } catch (const std::exception& e) {
-        LOG_ERROR("ServiceEngine", "Background sync failed: " << e.what());
-        if (this->onLoadError) this->onLoadError(std::string("Background sync failed: ") + e.what());
+        std::string msg = std::string("Background sync failed: ") + e.what();
+        LOG_ERROR("ServiceEngine", msg);
+        if (this->onLoadError) this->onLoadError(msg);
+      } catch (...) {
+        std::string msg = "Background sync failed (possibly out of memory). Try closing other applications.";
+        LOG_ERROR("ServiceEngine", msg);
+        if (this->onLoadError) this->onLoadError(msg);
       }
     });
 }
