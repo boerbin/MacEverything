@@ -154,11 +154,11 @@ void ServiceEngine::startFullScan(StartupCallback completion) {
 
         // Content indexing in background
         dispatch_group_async(this->backgroundGroup_, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+          try {
             if (this->shuttingDown_.load(std::memory_order_acquire)) return;
             this->setupContentPersistence();
             this->startContentIndexing();
 
-            // Open semantic DB and start semantic indexing
             auto embIdx = this->safeEmbeddingIndex();
             if (embIdx) {
                 std::string dbPath = this->config_.cachePath + "/semantic_index.db";
@@ -166,6 +166,9 @@ void ServiceEngine::startFullScan(StartupCallback completion) {
                 embIdx->open(dbPath);
             }
             this->startSemanticIndexing();
+          } catch (const std::exception& e) {
+            LOG_ERROR("ServiceEngine", "Content/semantic setup failed: " << e.what());
+          }
         });
     });
 }
@@ -311,6 +314,7 @@ void ServiceEngine::backgroundSyncEngine(
     std::chrono::steady_clock::time_point indexLoadDone)
 {
     dispatch_group_async(backgroundGroup_, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      try {
         // Try FSEvents replay
         auto replayDone = std::make_shared<std::atomic<bool>>(false);
         auto journalTruncated = std::make_shared<std::atomic<bool>>(false);
@@ -432,11 +436,11 @@ void ServiceEngine::backgroundSyncEngine(
         newPersistence->flush(meta, /*force=*/true);
 
         dispatch_group_async(this->backgroundGroup_, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+          try {
             if (this->shuttingDown_.load(std::memory_order_acquire)) return;
             this->setupContentPersistence();
             this->startContentIndexing();
 
-            // Open semantic DB and start semantic indexing
             auto embIdx = this->safeEmbeddingIndex();
             if (embIdx) {
                 std::string dbPath = this->config_.cachePath + "/semantic_index.db";
@@ -444,8 +448,15 @@ void ServiceEngine::backgroundSyncEngine(
                 embIdx->open(dbPath);
             }
             this->startSemanticIndexing();
+          } catch (const std::exception& e) {
+            LOG_ERROR("ServiceEngine", "Content/semantic setup failed: " << e.what());
+          }
         });
         if (this->onIndexChanged) this->onIndexChanged();
+      } catch (const std::exception& e) {
+        LOG_ERROR("ServiceEngine", "Background sync failed: " << e.what());
+        if (this->onLoadError) this->onLoadError(std::string("Background sync failed: ") + e.what());
+      }
     });
 }
 
