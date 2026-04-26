@@ -225,12 +225,8 @@ final class AISetupHelper {
             case .installLiteLLM:
                 script += """
                 echo "[\(num)/\(total)] Installing LiteLLM..."
-                if command -v litellm &> /dev/null; then
-                    echo "  OK: Already installed"
-                else
-                    pip3 install 'litellm[proxy]'
-                    echo "  OK: Installed"
-                fi
+                pip3 install 'litellm[proxy]'
+                echo "  OK: Installed"
 
                 """
             case .startLiteLLM:
@@ -261,6 +257,7 @@ final class AISetupHelper {
         echo "======================================"
         echo ""
         read -n 1 -s -r -p "Press any key to close this window..."
+        osascript -e 'tell application "Terminal" to close front window' &
         exit 0
         """
 
