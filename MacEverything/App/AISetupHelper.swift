@@ -122,12 +122,13 @@ final class AISetupHelper {
     }
 
     static func isLiteLLMRunning() async -> Bool {
-        guard let url = URL(string: "http://localhost:19861/v1/models") else { return false }
+        guard let url = URL(string: "http://localhost:19861/health") else { return false }
         var request = URLRequest(url: url)
         request.timeoutInterval = 2
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
-            return (response as? HTTPURLResponse)?.statusCode == 200
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            return code == 200
         } catch {
             return false
         }
@@ -164,8 +165,6 @@ final class AISetupHelper {
             litellm_params:
               model: "ollama/qwen2.5:3b"
               api_base: "http://localhost:11434"
-        general_settings:
-          master_key: ""
         """
         let configPath = "/tmp/maceverything_litellm_config.yaml"
         try? litellmConfig.write(toFile: configPath, atomically: true, encoding: .utf8)
@@ -232,13 +231,13 @@ final class AISetupHelper {
             case .startLiteLLM:
                 script += """
                 echo "[\(num)/\(total)] Starting LiteLLM gateway..."
-                if curl -s http://localhost:19861/v1/models > /dev/null 2>&1; then
+                if curl -s http://localhost:19861/health > /dev/null 2>&1; then
                     echo "  OK: Already running"
                 else
                     pip3 install -q 'litellm[proxy]' 2>/dev/null
                     nohup litellm --config \(configPath) --port 19861 > /tmp/litellm.log 2>&1 &
                     sleep 3
-                    if curl -s http://localhost:19861/v1/models > /dev/null 2>&1; then
+                    if curl -s http://localhost:19861/health > /dev/null 2>&1; then
                         echo "  OK: Started on port 19861"
                     else
                         echo "  FAIL: Failed to start. Check /tmp/litellm.log"
