@@ -42,6 +42,8 @@ struct ContentSettingsView: View {
                                 HStack(spacing: 2) {
                                     Text(".\(ext)")
                                         .font(.caption)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
                                     Button {
                                         removeExtension(ext)
                                     } label: {
@@ -50,6 +52,7 @@ struct ContentSettingsView: View {
                                     }
                                     .buttonStyle(.plain)
                                 }
+                                .frame(width: 72)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(Capsule().fill(Color.secondary.opacity(0.2)))
