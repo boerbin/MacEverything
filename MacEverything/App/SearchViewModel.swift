@@ -340,7 +340,7 @@ class SearchViewModel: ObservableObject {
             }
 
             searchTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 300_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s debounce for AI
                 guard !Task.isCancelled else { return }
                 performSemanticSearch(query)
             }
@@ -373,9 +373,9 @@ class SearchViewModel: ObservableObject {
             contentKeyword = ""
 
             if isAISearch {
-                // AI default: NL translate → file name search
+                // AI default: NL translate → file name search (2s debounce or Enter)
                 searchTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
                     guard !Task.isCancelled else { return }
                     performAITranslatedSearch(text)
                 }
@@ -691,6 +691,22 @@ class SearchViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
             guard !Task.isCancelled, let self, self.searchText == text else { return }
             self.historyStore.recordQuery(text)
+        }
+    }
+
+    func onEnterPressed() {
+        guard isAISearch, !searchText.isEmpty else { return }
+        searchTask?.cancel()
+        searchGeneration &+= 1
+
+        let text = searchText
+        let lowerText = text.lowercased()
+        if lowerText.hasPrefix("infile:") {
+            let query = String(text.dropFirst(7))
+            guard !query.isEmpty else { return }
+            performSemanticSearch(query)
+        } else {
+            performAITranslatedSearch(text)
         }
     }
 

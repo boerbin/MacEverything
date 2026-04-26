@@ -34,6 +34,9 @@ struct ContentView: View {
                             return true
                         }
                         return false
+                    },
+                    onEnter: {
+                        viewModel.onEnterPressed()
                     }
                 )
                 .frame(height: 36)
