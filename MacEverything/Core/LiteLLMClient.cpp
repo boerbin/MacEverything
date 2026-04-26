@@ -178,6 +178,6 @@ bool LiteLLMClient::isAvailable() {
     cli.set_connection_timeout(2);
     cli.set_read_timeout(2);
 
-    auto res = cli.Get("/v1/models");
+    auto res = cli.Get("/health");
     return res && res->status == 200;
 }
