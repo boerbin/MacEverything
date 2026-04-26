@@ -153,7 +153,7 @@ void ServiceEngine::startSemanticIndexing() {
             }
 
             uint64_t cur = indexed.fetch_add(1, std::memory_order_relaxed) + 1;
-            if (cur % 100 == 0 && this->onSemanticIndexProgress) {
+            if ((cur == 1 || cur % 10 == 0) && this->onSemanticIndexProgress) {
                 this->onSemanticIndexProgress(cur, total);
             }
         }
