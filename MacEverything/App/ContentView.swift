@@ -85,11 +85,12 @@ struct ContentView: View {
                              : "Syncing...")
                             .foregroundColor(.orange)
                     } else if viewModel.isMonitoring {
+                        let indexingBusy = viewModel.isContentIndexing || viewModel.isSemanticIndexing
                         Circle()
-                            .fill(.green)
+                            .fill(indexingBusy ? .orange : .green)
                             .frame(width: 6, height: 6)
                         Text("Live")
-                            .foregroundColor(.green)
+                            .foregroundColor(indexingBusy ? .orange : .green)
                             .fontWeight(.medium)
                     }
                     Text("\(viewModel.totalRecords) files indexed")
