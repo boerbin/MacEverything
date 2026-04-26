@@ -53,9 +53,19 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)startScanFrom:(NSString *)rootPath
            completion:(void (^)(uint32_t totalRecords))completion;
 
+/// Start the engine early (e.g. from AppDelegate). Idempotent — only the first call takes effect.
+/// The engine starts in the background; UI callbacks are forwarded once set.
+- (void)startEngine;
+
+/// Reset engine state so the next startIncrementalFrom: call will restart the engine.
+/// Call this before rebuildIndex to allow a fresh scan.
+- (void)resetEngine;
+
 /// Start with incremental loading: load cached index + WAL, replay FSEvents since last save.
 /// Falls back to full scan if FSEvents journal is unavailable.
 /// Completion reports total records and whether a full scan was needed.
+/// If the engine was already started via startEngine, installs callbacks and fires completion
+/// when the in-progress startup finishes (or immediately if already done).
 - (void)startIncrementalFrom:(NSString *)rootPath
                    cachePath:(NSString *)cachePath
                      walPath:(NSString *)walPath

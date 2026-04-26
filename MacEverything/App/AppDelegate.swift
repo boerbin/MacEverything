@@ -10,6 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         MacSearchBridge.initializeLogger()
+        MacSearchBridge.shared().startEngine()
 
         let shouldMinimize = Self.shouldStartMinimized()
 
