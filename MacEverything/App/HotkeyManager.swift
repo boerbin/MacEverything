@@ -27,7 +27,7 @@ class HotkeyManager {
             modifiers = UInt32(defaults.integer(forKey: "hotkeyModifiers"))
         } else {
             keyCode = UInt32(kVK_Space)
-            modifiers = UInt32(optionKey)
+            modifiers = UInt32(cmdKey)
         }
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x4D455648), id: 1)
