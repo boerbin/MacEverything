@@ -119,12 +119,11 @@ std::string SearchEngine::completePhase2() {
     if (!phase2Pending_.load(std::memory_order_acquire)) return {};
 
     // Check available memory before snapshot+build
-    // Real cost per record: ~100B snapshots + ~200B trigram index + ~300B path trigram
-    //   + ~100B pathIdx map + ~100B misc = ~800B/record
+    // Measured peak: ~200B/record (snapshots ~60B + indices ~140B)
     {
         std::shared_lock lock(mutex_);
         uint64_t recordCount = types_.size();
-        uint64_t estimatedBytes = recordCount * 800;
+        uint64_t estimatedBytes = recordCount * 200;
         uint64_t availablePages = 0;
 #ifdef __APPLE__
         vm_statistics64_data_t vmstat;
@@ -139,7 +138,8 @@ std::string SearchEngine::completePhase2() {
                 + std::to_string(estimatedBytes >> 20) + "MB but only ~"
                 + std::to_string(availableBytes >> 20) + "MB available. Close other applications to free memory.";
             LOG_WARN("SearchEngine", msg);
-            phase2Pending_.store(false, std::memory_order_release);
+            // Keep phase2Pending_=true so addRecord() skips trigram insertion.
+            // Otherwise new records build a tiny partial index that corrupts search.
             return msg;
         }
 #endif
