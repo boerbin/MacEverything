@@ -59,6 +59,7 @@ struct ResultRow: View {
     let item: FileItem
     let hints: [HighlightHint]
     @State private var isHovered = false
+    @State private var isFlashing = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -88,8 +89,10 @@ struct ResultRow: View {
         .padding(.horizontal, 6)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isHovered ? Color.accentColor.opacity(0.12) : Color.clear)
+                .fill(isFlashing ? Color.accentColor.opacity(0.35) :
+                      isHovered ? Color.accentColor.opacity(0.12) : Color.clear)
         )
+        .animation(.easeOut(duration: 0.15), value: isFlashing)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
@@ -105,10 +108,12 @@ struct ResultRow: View {
             return NSItemProvider(object: NSURL(fileURLWithPath: fullPath))
         }
         .onTapGesture(count: 2) {
-            if NSEvent.modifierFlags.contains(.command) {
-                revealInFinder(item)
-            } else {
-                openFile(item)
+            flashAndRun {
+                if NSEvent.modifierFlags.contains(.command) {
+                    revealInFinder(item)
+                } else {
+                    openFile(item)
+                }
             }
         }
         .onTapGesture(count: 1) {
@@ -133,6 +138,14 @@ struct ResultRow: View {
         }
         if unitIndex == 0 { return "\(bytes) B" }
         return String(format: "%.1f %@", size, units[unitIndex])
+    }
+
+    private func flashAndRun(_ action: @escaping () -> Void) {
+        isFlashing = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isFlashing = false
+            action()
+        }
     }
 
     private func openFile(_ item: FileItem) {
