@@ -331,14 +331,14 @@ class HighlightedNSTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
-        // Handle Enter/Return key
         if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
-            onEnterKey?()
-            return
+            if !hasMarkedText() {
+                onEnterKey?()
+                return
+            }
         }
-        // Handle Tab key for ghost suggestion
         if event.keyCode == 48 { // Tab key
-            if let handler = onTabKey, handler() {
+            if !hasMarkedText(), let handler = onTabKey, handler() {
                 return
             }
         }
