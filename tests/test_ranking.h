@@ -8,9 +8,10 @@ static void runSearchRankingTests() {
     std::cout << "  Part 3e: Search Ranking Tests\n";
     std::cout << "========================================\n\n";
 
-    // ── Test 1: Space-split AND query — scoring term is first TERM ──
+    // ── Test 1: Space-split AND query — multi-term scoring ──
     // "Alfred 5.app" is parsed as AND(TERM("alfred"), TERM("5.app"))
-    // Scoring term = "alfred", so exact name "Alfred" gets priority 0
+    // "Alfred 5.app" matches both terms in name (missCount=0)
+    // "Alfred" only matches "alfred" but not "5.app" (missCount=1)
     std::cout << "  --- Space-split AND ranking ---\n";
     {
         SearchEngine engine;
@@ -23,10 +24,8 @@ static void runSearchRankingTests() {
 
         auto res = engine.query("Alfred 5.app");
         check(!res.empty(), "Ranking: 'Alfred 5.app' has results");
-        // "Alfred" is exact match on scoring term "alfred" → priority 0
-        // "Alfred 5.app" starts with "alfred" → priority 1
-        check(engine.getRecord(res[0]).name == "Alfred",
-              "Ranking: exact scoring-term match 'Alfred' is first result");
+        check(engine.getRecord(res[0]).name == "Alfred 5.app",
+              "Ranking: all-terms-in-name 'Alfred 5.app' is first result");
     }
 
     // ── Test 2: Prefix match before contains match ──
