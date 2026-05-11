@@ -439,9 +439,19 @@ private:
 
     static bool globMatch(const std::string& pattern, const std::string& text);
 
-    /// Match result from search: (record index, priority, full path length).
-    /// Priority: 0=exact, 1=starts-with, 2=contains, 3=path-only match.
-    struct Match { uint32_t idx; uint8_t priority; uint32_t pathLen; };
+    /// Match result from search: (record index, composite score).
+    /// Score layout (lower = better):
+    ///   bits 16-23: name miss count (# of query terms NOT in filename)
+    ///   bits 8-15:  match quality sum (per-term: 0=exact,1=prefix,2=word-boundary,3=substring)
+    ///   bits 0-7:   path length bucket (min(fullPathLen/16, 255))
+    struct Match { uint32_t idx; uint32_t score; };
+
+    static inline uint32_t encodeScore(uint8_t priority, uint32_t pathLen) {
+        uint8_t missCount = (priority >= 3) ? 1 : 0;
+        uint8_t quality = (priority >= 3) ? 0 : priority;
+        uint8_t pathByte = static_cast<uint8_t>(std::min<uint32_t>(pathLen, 255));
+        return ((uint32_t)missCount << 16) | ((uint32_t)quality << 8) | pathByte;
+    }
 
     /// Node-centric structured query: name trigram → name verify → path constraint verify.
     /// Handles SEGMENTS and DIR_EXACT modes.
