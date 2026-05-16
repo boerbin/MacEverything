@@ -18,7 +18,6 @@
 #include "MacEverything/Core/QueryTokenizer.h"
 #include "MacEverything/Core/QueryParser.h"
 #include "MacEverything/Core/QueryFilterParser.h"
-#include "MacEverything/Core/EmbeddingIndex.h"
 #include <chrono>
 #include <iostream>
 #include <iomanip>
@@ -125,10 +124,7 @@ namespace fs = std::filesystem;
 #include "tests/test_fsevents_search_latency.h"
 #include "tests/test_batch_split.h"
 #include "tests/test_litellm_backend.h"
-#include "tests/test_embedding_index.h"
-#include "tests/test_vector_search.h"
 #include "tests/test_nl_translator.h"
-#include "tests/test_semantic_perf.h"
 #include "tests/test_rich_text_extractor.h"
 #include "tests/test_llama_backend.h"
 #include "tests/test_model_manager.h"
@@ -200,10 +196,7 @@ static void printUsage(const char* prog) {
     std::cout << "  76 (FSEvents search latency),\n";
     std::cout << "  77 (batch split),\n";
     std::cout << "  78 (LiteLLM client),\n";
-    std::cout << "  79 (embedding index),\n";
-    std::cout << "  80 (vector search),\n";
     std::cout << "  81 (NL translator),\n";
-    std::cout << "  82 (semantic perf bench),\n";
     std::cout << "  83 (rich text extractor),\n";
     std::cout << "  84 (llama backend)\n";
 }
@@ -220,10 +213,10 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if (arg == "--fast") {
             explicitSelection = true;
-            selectedParts.insert({"3", "3b", "3c", "3d", "3e", "5", "7", "7b", "7c", "7d", "7e", "7f", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70", "71", "72", "73", "74", "75", "76", "78", "79", "80", "81", "83", "84", "85"});
+            selectedParts.insert({"3", "3b", "3c", "3d", "3e", "5", "7", "7b", "7c", "7d", "7e", "7f", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70", "71", "72", "73", "74", "75", "76", "78", "81", "83", "84", "85"});
         } else if (arg == "--bench") {
             explicitSelection = true;
-            selectedParts.insert({"44", "46", "82"});
+            selectedParts.insert({"44", "46"});
         } else if (arg == "--slow") {
             explicitSelection = true;
             selectedParts.insert({"1", "4", "6"});
@@ -246,7 +239,7 @@ int main(int argc, char* argv[]) {
 
     // If no explicit selection, run all parts
     if (!explicitSelection) {
-        selectedParts = {"1", "3", "3b", "3c", "3d", "3e", "4", "5", "6", "7", "7b", "7c", "7d", "7e", "7f", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70", "71", "73", "74", "76", "77", "78", "79", "80", "81", "83", "84", "85"};
+        selectedParts = {"1", "3", "3b", "3c", "3d", "3e", "4", "5", "6", "7", "7b", "7c", "7d", "7e", "7f", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70", "71", "73", "74", "76", "77", "78", "81", "83", "84", "85"};
     }
 
     // Validate root path if scan test is selected
@@ -355,10 +348,7 @@ int main(int argc, char* argv[]) {
     if (selectedParts.count("76")) runFSEventsSearchLatencyTest();
     if (selectedParts.count("77")) runBatchSplitTests();
     if (selectedParts.count("78")) runLiteLLMBackendTests();
-    if (selectedParts.count("79")) runEmbeddingIndexTests();
-    if (selectedParts.count("80")) runVectorSearchTests();
     if (selectedParts.count("81")) runNLTranslatorTests();
-    if (selectedParts.count("82")) runSemanticPerfTests();
     if (selectedParts.count("83")) runRichTextExtractorTests();
     if (selectedParts.count("84")) runLlamaBackendTests();
     if (selectedParts.count("85")) runModelManagerTests();

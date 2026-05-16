@@ -2,102 +2,7 @@
 #import "MacSearchBridge+Semantic.h"
 #include "Logger.h"
 
-@implementation MESemanticResult
-@end
-
-@implementation MacSearchBridge (Semantic)
-
-- (NSArray<MESemanticResult *> *)semanticSearch:(NSString *)query maxResults:(uint32_t)maxResults {
-    @try {
-        auto litellm = _serviceEngine->safeLiteLLMClient();
-        auto vectorSearch = _serviceEngine->safeVectorSearch();
-        auto engine = _serviceEngine->safeEngine();
-        if (!litellm || !vectorSearch || !engine) return @[];
-
-        std::string queryStr([query UTF8String]);
-        if (queryStr.empty()) return @[];
-
-        // Get embedding for query text
-        auto queryVec = litellm->embed("embed", queryStr);
-        if (queryVec.empty()) return @[];
-
-        // Search vectors
-        auto hits = vectorSearch->search(queryVec, maxResults);
-        if (hits.empty()) return @[];
-
-        // Enrich with file metadata
-        NSMutableArray<MESemanticResult *> *results = [NSMutableArray arrayWithCapacity:hits.size()];
-        for (const auto& hit : hits) {
-            auto record = engine->getRecord(hit.id);
-            if (record.type == 0) continue;
-
-            std::string fullPath = SearchEngine::makeFullPath(record.path, record.name);
-
-            NSString *nsName = [NSString stringWithUTF8String:record.name.c_str()];
-            NSString *nsPath = [NSString stringWithUTF8String:fullPath.c_str()];
-            if (!nsName || !nsPath) continue;
-
-            MESemanticResult *r = [[MESemanticResult alloc] init];
-            r.name = nsName;
-            r.path = nsPath;
-            r.type = record.type;
-            r.size = record.size;
-            r.modTime = record.modTime;
-            r.similarity = hit.similarity;
-            [results addObject:r];
-        }
-        return results;
-    } @catch (NSException *exception) {
-        LOG_ERROR("Bridge", "semanticSearch exception: " << [[exception reason] UTF8String]);
-        return @[];
-    }
-}
-
-- (NSArray<MESemanticResult *> *)similarFiles:(NSString *)filePath maxResults:(uint32_t)maxResults {
-    @try {
-        auto embeddingIndex = _serviceEngine->safeEmbeddingIndex();
-        auto vectorSearch = _serviceEngine->safeVectorSearch();
-        auto engine = _serviceEngine->safeEngine();
-        if (!embeddingIndex || !vectorSearch || !engine) return @[];
-
-        std::string pathStr([filePath UTF8String]);
-        if (pathStr.empty()) return @[];
-
-        // Get embedding for the source file
-        std::vector<float> sourceVec;
-        if (!embeddingIndex->getEmbedding(pathStr, sourceVec)) return @[];
-
-        // Search for similar vectors
-        auto hits = vectorSearch->search(sourceVec, maxResults);
-        if (hits.empty()) return @[];
-
-        // Enrich with file metadata
-        NSMutableArray<MESemanticResult *> *results = [NSMutableArray arrayWithCapacity:hits.size()];
-        for (const auto& hit : hits) {
-            auto record = engine->getRecord(hit.id);
-            if (record.type == 0) continue;
-
-            std::string fullPath = SearchEngine::makeFullPath(record.path, record.name);
-
-            NSString *nsName = [NSString stringWithUTF8String:record.name.c_str()];
-            NSString *nsPath = [NSString stringWithUTF8String:fullPath.c_str()];
-            if (!nsName || !nsPath) continue;
-
-            MESemanticResult *r = [[MESemanticResult alloc] init];
-            r.name = nsName;
-            r.path = nsPath;
-            r.type = record.type;
-            r.size = record.size;
-            r.modTime = record.modTime;
-            r.similarity = hit.similarity;
-            [results addObject:r];
-        }
-        return results;
-    } @catch (NSException *exception) {
-        LOG_ERROR("Bridge", "similarFiles exception: " << [[exception reason] UTF8String]);
-        return @[];
-    }
-}
+@implementation MacSearchBridge (AI)
 
 - (NSDictionary *)translateQuery:(NSString *)naturalLanguage {
     @try {
@@ -138,19 +43,10 @@
     }
 }
 
-- (uint32_t)semanticIndexedCount {
-    auto embeddingIndex = _serviceEngine->safeEmbeddingIndex();
-    return embeddingIndex ? embeddingIndex->indexedCount() : 0;
-}
-
-- (void)rebuildSemanticIndex {
-    _serviceEngine->rebuildSemanticIndex();
-}
-
-- (BOOL)isLiteLLMAvailable {
+- (BOOL)isAIAvailable {
     @try {
-        auto litellm = _serviceEngine->safeLiteLLMClient();
-        return litellm ? litellm->isAvailable() : NO;
+        auto nlTranslator = _serviceEngine->safeNLTranslator();
+        return nlTranslator != nullptr;
     } @catch (NSException *exception) {
         return NO;
     }

@@ -171,20 +171,6 @@
             if (s.onContentIndexComplete) s.onContentIndexComplete(totalIndexed);
         });
     };
-    _serviceEngine->onSemanticIndexProgress = [weakSelf](uint64_t indexed, uint64_t total) {
-        MacSearchBridge *s = weakSelf;
-        if (!s) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (s.onSemanticIndexProgress) s.onSemanticIndexProgress((uint32_t)indexed, (uint32_t)total);
-        });
-    };
-    _serviceEngine->onSemanticIndexComplete = [weakSelf](uint32_t totalIndexed) {
-        MacSearchBridge *s = weakSelf;
-        if (!s) return;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (s.onSemanticIndexComplete) s.onSemanticIndexComplete(totalIndexed);
-        });
-    };
     _serviceEngine->onLoadError = [weakSelf](const std::string& msg) {
         MacSearchBridge *s = weakSelf;
         if (!s) return;

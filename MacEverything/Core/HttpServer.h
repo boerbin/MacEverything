@@ -10,10 +10,8 @@
 
 class SearchEngine;
 class ContentIndex;
-class EmbeddingIndex;
-class VectorSearch;
-class LiteLLMBackend;
 class NLTranslator;
+class ModelManager;
 
 class HttpServer {
 public:
@@ -24,7 +22,6 @@ public:
         std::function<void(const std::vector<std::string>&, uint64_t)> onSetContentConfig;
         std::function<std::vector<std::string>()> onGetContentExtensions;
         std::function<uint64_t()> onGetContentMaxFileSize;
-        std::function<void()> onRebuildSemanticIndex;
     };
 
     HttpServer() = default;
@@ -34,10 +31,8 @@ public:
 
     using EngineGetter = std::function<std::shared_ptr<SearchEngine>()>;
     using ContentIndexGetter = std::function<std::shared_ptr<ContentIndex>()>;
-    using EmbeddingIndexGetter = std::function<std::shared_ptr<EmbeddingIndex>()>;
-    using VectorSearchGetter = std::function<std::shared_ptr<VectorSearch>()>;
-    using LiteLLMBackendGetter = std::function<std::shared_ptr<LiteLLMBackend>()>;
     using NLTranslatorGetter = std::function<std::shared_ptr<NLTranslator>()>;
+    using ModelManagerGetter = std::function<std::shared_ptr<ModelManager>()>;
 
     bool start(uint16_t port,
                EngineGetter engineGetter,
@@ -47,8 +42,7 @@ public:
     uint16_t port() const;
 
     void setAdminCallbacks(AdminCallbacks callbacks);
-    void setSemanticGetters(EmbeddingIndexGetter eig, VectorSearchGetter vsg,
-                            LiteLLMBackendGetter lcg, NLTranslatorGetter ntg);
+    void setAIGetters(NLTranslatorGetter ntg, ModelManagerGetter mmg);
 
 private:
     void acceptLoop();
@@ -76,22 +70,17 @@ private:
     std::string handleGetContentConfig();
     std::string handleSetContentConfig(const std::string& body);
 
-    // Semantic / AI endpoints
-    std::string handleSemanticSearch(const std::unordered_map<std::string, std::string>& params);
-    std::string handleSimilarSearch(const std::unordered_map<std::string, std::string>& params);
+    // AI endpoints
     std::string handleAITranslate(const std::string& body);
     std::string handleAIStatus();
-    std::string handleRebuildSemanticIndex();
 
     std::string jsonResponse(int status, const std::string& body);
     std::string errorResponse(int status, const std::string& message);
 
     EngineGetter getEngine_;
     ContentIndexGetter getContentIndex_;
-    EmbeddingIndexGetter getEmbeddingIndex_;
-    VectorSearchGetter getVectorSearch_;
-    LiteLLMBackendGetter getLiteLLMBackend_;
     NLTranslatorGetter getNLTranslator_;
+    ModelManagerGetter getModelManager_;
     AdminCallbacks adminCallbacks_;
     std::atomic<bool> running_{false};
     int serverFd_{-1};

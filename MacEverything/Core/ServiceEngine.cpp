@@ -17,10 +17,22 @@ ServiceEngine::ServiceEngine(const ServiceConfig& config)
     engine_ = std::make_shared<SearchEngine>();
     watcher_ = std::make_shared<FileSystemWatcher>("live");
     contentIndex_ = std::make_shared<ContentIndex>();
-    embeddingIndex_ = std::make_shared<EmbeddingIndex>();
-    vectorSearch_ = std::make_shared<VectorSearch>(1024);  // bge-m3 is 1024-dim
-    litellmClient_ = std::make_shared<LiteLLMBackend>();
-    nlTranslator_ = std::make_shared<NLTranslator>(litellmClient_);
+    {
+        std::string appSupportPath = config.cachePath;
+        // Go up from Caches to Application Support
+        auto appSupport = std::filesystem::path(appSupportPath).parent_path().parent_path();
+        std::string modelsDir = (appSupport / "MacEverything" / "models").string();
+        modelManager_ = std::make_shared<ModelManager>(modelsDir);
+        modelManager_->loadAsync([this](bool success) {
+            if (success) {
+                auto backend = modelManager_->currentBackend();
+                if (backend) {
+                    std::unique_lock lock(engineMutex_);
+                    nlTranslator_ = std::make_shared<NLTranslator>(backend);
+                }
+            }
+        });
+    }
     mutationQueue_ = dispatch_queue_create("com.maceverything.mutation", DISPATCH_QUEUE_SERIAL);
     backgroundGroup_ = dispatch_group_create();
     contentIndexingSemaphore_ = dispatch_semaphore_create(0);
@@ -67,6 +79,15 @@ std::shared_ptr<ContentIndexPersistence> ServiceEngine::safeContentPersistence()
 void ServiceEngine::setContentPersistence(std::shared_ptr<ContentIndexPersistence> persistence) {
     std::unique_lock lock(contentPersistenceMutex_);
     contentPersistence_ = persistence;
+}
+
+std::shared_ptr<NLTranslator> ServiceEngine::safeNLTranslator() {
+    std::shared_lock lock(engineMutex_);
+    return nlTranslator_;
+}
+
+std::shared_ptr<ModelManager> ServiceEngine::safeModelManager() {
+    return modelManager_;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -158,16 +179,8 @@ void ServiceEngine::startFullScan(StartupCallback completion) {
             if (this->shuttingDown_.load(std::memory_order_acquire)) return;
             this->setupContentPersistence();
             this->startContentIndexing();
-
-            auto embIdx = this->safeEmbeddingIndex();
-            if (embIdx) {
-                std::string dbPath = this->config_.cachePath + "/semantic_index.db";
-                fs::create_directories(this->config_.cachePath);
-                embIdx->open(dbPath);
-            }
-            this->startSemanticIndexing();
           } catch (const std::exception& e) {
-            LOG_ERROR("ServiceEngine", "Content/semantic setup failed: " << e.what());
+            LOG_ERROR("ServiceEngine", "Content setup failed: " << e.what());
           }
         });
     });
@@ -369,15 +382,6 @@ void ServiceEngine::backgroundSyncEngine(
                 if (this->shuttingDown_.load(std::memory_order_acquire)) return;
                 this->setupContentPersistence();
                 this->startContentIndexing();
-
-                // Open semantic DB and start semantic indexing
-                auto embIdx = this->safeEmbeddingIndex();
-                if (embIdx) {
-                    std::string dbPath = this->config_.cachePath + "/semantic_index.db";
-                    fs::create_directories(this->config_.cachePath);
-                    embIdx->open(dbPath);
-                }
-                this->startSemanticIndexing();
             });
             if (this->onIndexChanged) this->onIndexChanged();
             return;
@@ -449,16 +453,8 @@ void ServiceEngine::backgroundSyncEngine(
             if (this->shuttingDown_.load(std::memory_order_acquire)) return;
             this->setupContentPersistence();
             this->startContentIndexing();
-
-            auto embIdx = this->safeEmbeddingIndex();
-            if (embIdx) {
-                std::string dbPath = this->config_.cachePath + "/semantic_index.db";
-                fs::create_directories(this->config_.cachePath);
-                embIdx->open(dbPath);
-            }
-            this->startSemanticIndexing();
           } catch (const std::exception& e) {
-            LOG_ERROR("ServiceEngine", "Content/semantic setup failed: " << e.what());
+            LOG_ERROR("ServiceEngine", "Content setup failed: " << e.what());
           }
         });
         if (this->onIndexChanged) this->onIndexChanged();
@@ -508,15 +504,12 @@ void ServiceEngine::startHttpServer(uint16_t port) {
     }
 
     if (adminCallbacks.onRebuildIndex || adminCallbacks.onRebuildContentIndex) {
-        adminCallbacks.onRebuildSemanticIndex = [this]() { this->rebuildSemanticIndex(); };
         httpServer_->setAdminCallbacks(adminCallbacks);
     }
 
-    httpServer_->setSemanticGetters(
-        [this]() { return this->safeEmbeddingIndex(); },
-        [this]() { return this->safeVectorSearch(); },
-        [this]() { return this->safeLiteLLMClient(); },
-        [this]() { return this->safeNLTranslator(); }
+    httpServer_->setAIGetters(
+        [this]() { return this->safeNLTranslator(); },
+        [this]() { return this->safeModelManager(); }
     );
 }
 
@@ -542,8 +535,6 @@ void ServiceEngine::shutdown() {
 
     cancelContentIndexing_.store(true, std::memory_order_relaxed);
     contentIndexGeneration_.fetch_add(1, std::memory_order_acq_rel);
-    cancelSemanticIndexing_.store(true, std::memory_order_relaxed);
-    semanticIndexGeneration_.fetch_add(1, std::memory_order_acq_rel);
 
     // Wait for background GCD blocks with a timeout.
     // Background blocks check shuttingDown_ and bail quickly, so this typically completes in < 500ms.
