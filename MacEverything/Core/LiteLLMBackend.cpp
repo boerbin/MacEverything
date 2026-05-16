@@ -1,4 +1,4 @@
-#include "LiteLLMClient.h"
+#include "LiteLLMBackend.h"
 #include "httplib.h"
 #include <sstream>
 #include <cstdlib>
@@ -7,14 +7,14 @@
 // Construction
 // ---------------------------------------------------------------------------
 
-LiteLLMClient::LiteLLMClient(const std::string& host, int port)
-    : host_(host), port_(port) {}
+LiteLLMBackend::LiteLLMBackend(const std::string& host, int port, const std::string& model)
+    : host_(host), port_(port), model_(model) {}
 
 // ---------------------------------------------------------------------------
 // JSON helpers (manual — no JSON library, matches project pattern)
 // ---------------------------------------------------------------------------
 
-std::string LiteLLMClient::jsonEscape(const std::string& s) {
+std::string LiteLLMBackend::jsonEscape(const std::string& s) {
     std::string out;
     out.reserve(s.size() + 8);
     for (unsigned char c : s) {
@@ -40,7 +40,7 @@ std::string LiteLLMClient::jsonEscape(const std::string& s) {
     return out;
 }
 
-std::string LiteLLMClient::trim(const std::string& s) {
+std::string LiteLLMBackend::trim(const std::string& s) {
     size_t start = 0;
     while (start < s.size() && (s[start] == ' ' || s[start] == '\t' ||
                                  s[start] == '\n' || s[start] == '\r'))
@@ -56,13 +56,12 @@ std::string LiteLLMClient::trim(const std::string& s) {
 // Request body builders
 // ---------------------------------------------------------------------------
 
-std::string LiteLLMClient::buildChatRequestBody(
-    const std::string& model,
+std::string LiteLLMBackend::buildChatRequestBody(
     const std::vector<std::pair<std::string, std::string>>& messages,
     float temperature, int maxTokens)
 {
     std::ostringstream os;
-    os << "{\"model\":\"" << jsonEscape(model) << "\",\"messages\":[";
+    os << "{\"model\":\"" << jsonEscape(model_) << "\",\"messages\":[";
     for (size_t i = 0; i < messages.size(); ++i) {
         if (i > 0) os << ",";
         os << "{\"role\":\"" << jsonEscape(messages[i].first)
@@ -73,7 +72,7 @@ std::string LiteLLMClient::buildChatRequestBody(
     return os.str();
 }
 
-std::string LiteLLMClient::buildEmbedRequestBody(
+std::string LiteLLMBackend::buildEmbedRequestBody(
     const std::string& model, const std::string& text)
 {
     std::ostringstream os;
@@ -86,7 +85,7 @@ std::string LiteLLMClient::buildEmbedRequestBody(
 // Response parsers
 // ---------------------------------------------------------------------------
 
-std::string LiteLLMClient::parseChatResponse(const std::string& json) {
+std::string LiteLLMBackend::parseChatResponse(const std::string& json) {
     // Find "content":"..." in the response.
     // Handles the standard OpenAI chat completion format.
     const std::string key = "\"content\":\"";
@@ -117,7 +116,7 @@ std::string LiteLLMClient::parseChatResponse(const std::string& json) {
     return trim(result);
 }
 
-std::vector<float> LiteLLMClient::parseEmbedResponse(const std::string& json) {
+std::vector<float> LiteLLMBackend::parseEmbedResponse(const std::string& json) {
     // Find "embedding":[...] and extract comma-separated floats.
     std::vector<float> result;
     const std::string key = "\"embedding\":[";
@@ -142,11 +141,10 @@ std::vector<float> LiteLLMClient::parseEmbedResponse(const std::string& json) {
 }
 
 // ---------------------------------------------------------------------------
-// High-level API
+// High-level API (IModelBackend)
 // ---------------------------------------------------------------------------
 
-std::string LiteLLMClient::chat(
-    const std::string& model,
+std::string LiteLLMBackend::chat(
     const std::vector<std::pair<std::string, std::string>>& messages,
     float temperature, int maxTokens)
 {
@@ -154,13 +152,13 @@ std::string LiteLLMClient::chat(
     cli.set_connection_timeout(5);
     cli.set_read_timeout(30);
 
-    auto body = buildChatRequestBody(model, messages, temperature, maxTokens);
+    auto body = buildChatRequestBody(messages, temperature, maxTokens);
     auto res = cli.Post("/v1/chat/completions", body, "application/json");
     if (!res || res->status != 200) return "";
     return parseChatResponse(res->body);
 }
 
-std::vector<float> LiteLLMClient::embed(
+std::vector<float> LiteLLMBackend::embed(
     const std::string& model, const std::string& text)
 {
     httplib::Client cli(host_, port_);
@@ -173,11 +171,15 @@ std::vector<float> LiteLLMClient::embed(
     return parseEmbedResponse(res->body);
 }
 
-bool LiteLLMClient::isAvailable() {
+bool LiteLLMBackend::isAvailable() {
     httplib::Client cli(host_, port_);
     cli.set_connection_timeout(2);
     cli.set_read_timeout(2);
 
     auto res = cli.Get("/health");
     return res && res->status == 200;
+}
+
+std::string LiteLLMBackend::modelName() {
+    return "remote:" + host_ + ":" + std::to_string(port_);
 }

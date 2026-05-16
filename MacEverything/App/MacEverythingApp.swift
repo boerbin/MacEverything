@@ -45,8 +45,8 @@ struct MacEverythingApp: App {
                     ContentSettingsWindowController.shared.showWindow()
                 }
 
-                Button("Setup AI...") {
-                    AISetupWindowController.shared.showWindow()
+                Button("AI Settings...") {
+                    AISettingsWindowController.shared.showWindow()
                 }
 
                 Divider()
@@ -110,27 +110,6 @@ class ShortcutSettingsWindowController {
     }
 }
 
-class AISetupWindowController {
-    static let shared = AISetupWindowController()
-    private var window: NSWindow?
-
-    func showWindow() {
-        if let existing = window, existing.isVisible {
-            existing.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let setupView = AISetupView()
-        let hostingController = NSHostingController(rootView: setupView)
-        let win = NSWindow(contentViewController: hostingController)
-        win.title = "AI Setup"
-        win.styleMask = [.titled, .closable]
-        win.center()
-        win.makeKeyAndOrderFront(nil)
-        window = win
-    }
-}
-
 class AISettingsWindowController {
     static let shared = AISettingsWindowController()
     private var window: NSWindow?
@@ -145,27 +124,6 @@ class AISettingsWindowController {
         let hostingController = NSHostingController(rootView: view)
         let win = NSWindow(contentViewController: hostingController)
         win.title = "AI Settings"
-        win.styleMask = [.titled, .closable]
-        win.center()
-        win.makeKeyAndOrderFront(nil)
-        window = win
-    }
-}
-
-class SemanticSettingsWindowController {
-    static let shared = SemanticSettingsWindowController()
-    private var window: NSWindow?
-
-    func showWindow() {
-        if let existing = window, existing.isVisible {
-            existing.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let view = SemanticSettingsView()
-        let hostingController = NSHostingController(rootView: view)
-        let win = NSWindow(contentViewController: hostingController)
-        win.title = "Semantic Settings"
         win.styleMask = [.titled, .closable]
         win.center()
         win.makeKeyAndOrderFront(nil)

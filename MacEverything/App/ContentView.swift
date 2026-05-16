@@ -88,7 +88,7 @@ struct ContentView: View {
                              : "Syncing...")
                             .foregroundColor(.orange)
                     } else if viewModel.isMonitoring {
-                        let indexingBusy = viewModel.isContentIndexing || viewModel.isSemanticIndexing
+                        let indexingBusy = viewModel.isContentIndexing
                         Circle()
                             .fill(indexingBusy ? .orange : .green)
                             .frame(width: 6, height: 6)
@@ -110,15 +110,9 @@ struct ContentView: View {
                     if viewModel.isAISearch {
                         Text("·")
                             .foregroundColor(.secondary)
-                        Text(viewModel.isVectorSearch ? "AI·Vec" : "AI·NL")
+                        Text("AI·NL")
                             .foregroundColor(.purple)
                             .fontWeight(.medium)
-                        if viewModel.isVectorSearch {
-                            Text("·")
-                                .foregroundColor(.secondary)
-                            Text("\(viewModel.semanticIndexedCount) vectors")
-                                .foregroundColor(.secondary)
-                        }
                         if let translated = viewModel.translatedQuery {
                             Text("·")
                                 .foregroundColor(.secondary)
@@ -127,14 +121,6 @@ struct ContentView: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
-                    }
-                    if viewModel.isSemanticIndexing, let progress = viewModel.semanticIndexProgress {
-                        Text("·")
-                            .foregroundColor(.secondary)
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Semantic indexing \(progress.indexed)/\(progress.total)")
-                            .foregroundColor(.orange)
                     }
                     if viewModel.totalMatches > 0 {
                         Text("·")
@@ -236,62 +222,6 @@ struct ContentView: View {
                         .background(Color(nsColor: .controlBackgroundColor))
                     }
                 }
-            } else if viewModel.isAISearch && viewModel.isVectorSearch {
-                // AI + infile: → vector/semantic search
-                if viewModel.isSemanticSearching {
-                    VStack(spacing: 8) {
-                        Spacer()
-                        ProgressView()
-                            .controlSize(.large)
-                        Text("Vector searching...")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                } else if viewModel.semanticResults.isEmpty && !viewModel.searchText.isEmpty && viewModel.scanComplete {
-                    VStack(spacing: 8) {
-                        Spacer()
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 36))
-                            .foregroundColor(.secondary.opacity(0.5))
-                        Text("No semantic matches")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                } else if !viewModel.semanticResults.isEmpty {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(viewModel.semanticResults) { item in
-                                SemanticResultRow(item: item)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                            }
-                        }
-                    }
-                    .id(scrollViewID)
-
-                    if viewModel.totalMatches > 0 {
-                        HStack {
-                            Spacer()
-                            Text("\(viewModel.semanticResults.count) semantic matches")
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                                .padding(8)
-                            Spacer()
-                        }
-                        .background(Color(nsColor: .controlBackgroundColor))
-                    }
-                } else {
-                    VStack {
-                        Spacer()
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 36))
-                            .foregroundColor(.purple.opacity(0.3))
-                        Text("AI vector search — type after infile:")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                }
             } else if viewModel.isAISearch && viewModel.isAITranslating {
                 // AI default: NL translating in progress
                 VStack(spacing: 8) {
@@ -375,8 +305,10 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 600, minHeight: 400)
-        .sheet(isPresented: $viewModel.showAISetup) {
-            AISetupView()
+        .alert("AI Not Available", isPresented: $viewModel.showAISetup) {
+            Button("OK") { }
+        } message: {
+            Text("AI model is not loaded. Check AI Settings for status.")
         }
         .alert("Index Error", isPresented: $viewModel.showIndexCorruptionAlert) {
             Button("Clear Cache & Retry") { viewModel.clearCacheAndRestart() }
@@ -400,29 +332,3 @@ struct ContentView: View {
     }
 }
 
-struct SemanticResultRow: View {
-    let item: SemanticFileItem
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(.body)
-                    .lineLimit(1)
-                Text(item.path)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-            Text(String(format: "%.0f%%", item.similarity * 100))
-                .font(.caption.monospacedDigit())
-                .foregroundColor(.purple)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.purple.opacity(0.1))
-                .cornerRadius(4)
-        }
-        .padding(.vertical, 4)
-    }
-}
