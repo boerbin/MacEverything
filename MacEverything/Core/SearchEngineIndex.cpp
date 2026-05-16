@@ -134,6 +134,10 @@ void SearchEngine::buildTrigramIndex() {
     nameTrigramIndex_ = buildTrigramIndexFromData(types_, namePool_);
 }
 
+void SearchEngine::buildShortQueryCache() {
+    shortQueryCache_.rebuild(types_, namePool_, lowerPathPool_, pathIndices_, types_.size());
+}
+
 void SearchEngine::addTrigramsForRecord(uint32_t idx, const char* data, uint16_t len) {
     auto trigrams = ContentIndex::extractTrigrams(std::string(data, len));
     // P-2 fix: sort+unique instead of unordered_set

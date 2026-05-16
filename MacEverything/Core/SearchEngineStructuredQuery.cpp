@@ -110,7 +110,7 @@ void SearchEngine::treeWalkDown(uint32_t dirIdx, const ParsedQuery& pq,
 
             uint8_t priority = namePriority(nd, nl, namePattern.data(), namePattern.size());
             uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[childIdx]) + 1 + nl);
-            merged.push_back({childIdx, priority, pLen});
+            merged.push_back({childIdx, encodeScore(priority, pLen)});
         }
         return;
     }
@@ -222,7 +222,7 @@ void SearchEngine::queryStructured(const ParsedQuery& pq,
 
                 uint8_t priority = namePriority(nd, nl, namePattern.data(), namePattern.size());
                 uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[idx]) + 1 + nl);
-                merged.push_back({idx, priority, pLen});
+                merged.push_back({idx, encodeScore(priority, pLen)});
             }
         };
 
@@ -295,7 +295,7 @@ void SearchEngine::queryStructured(const ParsedQuery& pq,
             uint8_t priority = namePriority(namePool_.data(cursor), namePool_.length(cursor),
                                              namePattern.data(), namePattern.size());
             uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[cursor]) + 1 + entries[cursor].length);
-            merged.push_back({cursor, priority, pLen});
+            merged.push_back({cursor, encodeScore(priority, pLen)});
         }
     }
 }
@@ -334,7 +334,7 @@ bool SearchEngine::queryStructuredNameAnchor(const ParsedQuery& pq,
 
         uint8_t priority = namePriority(nameData, nameLen, namePattern.data(), namePattern.size());
         uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[idx]) + 1 + nameLen);
-        merged.push_back({idx, priority, pLen});
+        merged.push_back({idx, encodeScore(priority, pLen)});
     }
     return true;
 }

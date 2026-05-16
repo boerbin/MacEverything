@@ -20,6 +20,7 @@
 #include "IndexWAL.h"
 #include "QueryAST.h"
 #include "StructuredQueryParser.h"
+#include "ShortQueryCache.h"
 
 /// Deduplication table for directory path strings.
 /// Interns unique paths and returns a compact uint32_t index.
@@ -133,6 +134,12 @@ public:
 
     /// Whether Phase 2 is pending (trigram indices not yet built).
     bool isPhase2Pending() const { return phase2Pending_.load(std::memory_order_acquire); }
+
+    /// Build short query cache (call after Phase 2 or compaction, under shared_lock).
+    void buildShortQueryCache();
+
+    /// Access short query cache (for persistence).
+    ShortQueryCache& getShortQueryCache() { return shortQueryCache_; }
 
     /// Snapshot data for v6 serialization (thread-safe).
     struct V6Snapshot {
@@ -441,7 +448,14 @@ private:
 
     /// Match result from search: (record index, priority, full path length).
     /// Priority: 0=exact, 1=starts-with, 2=contains, 3=path-only match.
-    struct Match { uint32_t idx; uint8_t priority; uint32_t pathLen; };
+    struct Match { uint32_t idx; uint32_t score; };
+
+    static inline uint32_t encodeScore(uint8_t priority, uint32_t pathLen) {
+        uint8_t missCount = (priority >= 3) ? 1 : 0;
+        uint8_t quality = (priority >= 3) ? 0 : priority;
+        uint8_t pathByte = static_cast<uint8_t>(std::min<uint32_t>(pathLen, 255));
+        return ((uint32_t)missCount << 16) | ((uint32_t)quality << 8) | pathByte;
+    }
 
     /// Node-centric structured query: name trigram → name verify → path constraint verify.
     /// Handles SEGMENTS and DIR_EXACT modes.
@@ -489,6 +503,9 @@ private:
 
     std::shared_ptr<IndexWAL> wal_;
     std::atomic<uint64_t> compactionGen_{0};
+
+    // Short query cache: pre-computed top 100 for 1-2 char ASCII queries
+    ShortQueryCache shortQueryCache_;
 
     // Phase 2 two-stage startup: trigram indices built in background
     std::atomic<bool> phase2Pending_{false};

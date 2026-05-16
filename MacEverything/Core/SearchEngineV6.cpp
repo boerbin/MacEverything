@@ -213,8 +213,10 @@ std::string SearchEngine::completePhase2() {
 
         phase2Pending_.store(false, std::memory_order_release);
 
+        buildShortQueryCache();
+
         LOG_INFO("SearchEngine", "Phase 2 complete: replayed " << replayCount
-                 << " mutations, trigram indices active");
+                 << " mutations, trigram indices active, short query cache built");
     }
     return {};
 }

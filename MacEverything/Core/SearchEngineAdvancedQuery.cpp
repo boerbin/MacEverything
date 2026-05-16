@@ -838,7 +838,7 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                             priority = 3;
                         }
                     }
-                    local.push_back({idx, priority, static_cast<uint32_t>(pl + 1 + nl)});
+                    local.push_back({idx, encodeScore(priority, static_cast<uint32_t>(pl + 1 + nl))});
                 }
             });
 
@@ -882,7 +882,7 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                         priority = 3;
                     }
                 }
-                merged.push_back({idx, priority, static_cast<uint32_t>(pl + 1 + nl)});
+                merged.push_back({idx, encodeScore(priority, static_cast<uint32_t>(pl + 1 + nl))});
             }
         }
     } else {
@@ -938,7 +938,7 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                                   static_cast<time_t>(modTimesPtr[idx]),
                                   nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
                                   localPathBuf, regCache)) continue;
-                    local.push_back({static_cast<uint32_t>(idx), 2, 0});
+                    local.push_back({static_cast<uint32_t>(idx), encodeScore(2, 0)});
                 }
 
                 // SIMD main loop: 16 records per iteration
@@ -955,7 +955,7 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                                      static_cast<time_t>(modTimesPtr[ri]),
                                      nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
                                      localPathBuf, regCache)) {
-                            local.push_back({static_cast<uint32_t>(ri), 2, 0});
+                            local.push_back({static_cast<uint32_t>(ri), encodeScore(2, 0)});
                         }
                         liveMask &= liveMask - 1;
                     }
@@ -968,7 +968,7 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                                   static_cast<time_t>(modTimesPtr[idx]),
                                   nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
                                   localPathBuf, regCache)) continue;
-                    local.push_back({static_cast<uint32_t>(idx), 2, 0});
+                    local.push_back({static_cast<uint32_t>(idx), encodeScore(2, 0)});
                 }
             } else {
                 // ── Full evaluation path (needs string access) ──
@@ -1000,7 +1000,7 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                         }
                     }
                     uint32_t pLen = static_cast<uint32_t>(pl + 1 + nl);
-                    local.push_back({static_cast<uint32_t>(idx), priority, pLen});
+                    local.push_back({static_cast<uint32_t>(idx), encodeScore(priority, pLen)});
                 }
             }
         });
@@ -1023,8 +1023,7 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
     // Sort by priority, then path length
     auto beforeSort = std::chrono::steady_clock::now();
     auto cmp = [](const Match& a, const Match& b) {
-        if (a.priority != b.priority) return a.priority < b.priority;
-        return a.pathLen < b.pathLen;
+        return a.score < b.score;
     };
 
     size_t resultCount = merged.size();

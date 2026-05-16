@@ -131,9 +131,8 @@ void SearchEngine::queryDirList(const ParsedQuery& pq,
             if (types_[childIdx] == 0) continue; // skip tombstones
             const char* nd = namePool_.data(childIdx);
             uint16_t nl = namePool_.length(childIdx);
-            uint8_t priority = 2; // children are all "contains" priority
             uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[childIdx]) + 1 + nl);
-            merged.push_back({childIdx, priority, pLen});
+            merged.push_back({childIdx, encodeScore(2, pLen)});
         }
     }
 }
@@ -215,11 +214,9 @@ std::vector<uint32_t> SearchEngine::query(const std::string& keyword, uint32_t m
         auto beforeUnlock = std::chrono::steady_clock::now();
         lock.unlock();
 
-        // Sort by priority then path length
         auto beforeSort = std::chrono::steady_clock::now();
         auto cmp = [](const Match& a, const Match& b) {
-            if (a.priority != b.priority) return a.priority < b.priority;
-            return a.pathLen < b.pathLen;
+            return a.score < b.score;
         };
         size_t resultCount = merged.size();
         if (maxResults > 0 && resultCount > maxResults) resultCount = maxResults;
@@ -246,6 +243,28 @@ std::vector<uint32_t> SearchEngine::query(const std::string& keyword, uint32_t m
         timing.resultCount = result.size();
         timing.searchPath = "dir-list";
         return result;
+    }
+
+    // Fast path: short query cache for 1-2 char ASCII queries
+    if (shortQueryCache_.isBuilt()) {
+        if (auto* entry = shortQueryCache_.lookup(pq.lower)) {
+            auto queryStart = std::chrono::steady_clock::now();
+            std::vector<uint32_t> result;
+            result.reserve(std::min<size_t>(entry->results.size(),
+                                            maxResults > 0 ? maxResults : entry->results.size()));
+            for (uint32_t idx : entry->results) {
+                if (types_[idx] == 0) continue;
+                result.push_back(idx);
+                if (maxResults > 0 && result.size() >= maxResults) break;
+            }
+            auto end = std::chrono::steady_clock::now();
+            auto toMs = [](auto dur) { return std::chrono::duration<double, std::milli>(dur).count(); };
+            timing.totalMs = toMs(end - queryStart);
+            timing.totalRecords = types_.size();
+            timing.resultCount = result.size();
+            timing.searchPath = "short-query-cache";
+            return result;
+        }
     }
 
     // All non-DIR_LIST queries go through the unified Advanced path

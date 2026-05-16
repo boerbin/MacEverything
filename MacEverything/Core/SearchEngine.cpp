@@ -35,6 +35,11 @@ uint32_t SearchEngine::internPath(const std::string& path) {
 }
 
 void SearchEngine::tombstoneAt(uint32_t idx) {
+    if (shortQueryCache_.isBuilt()) {
+        const char* name = namePool_.data(idx);
+        uint16_t nameLen = namePool_.length(idx);
+        if (nameLen > 0) shortQueryCache_.markDeleted(idx, name, nameLen);
+    }
     types_[idx] = 0;
     markPageDirty(idx);
     sizes_[idx] = 0;
