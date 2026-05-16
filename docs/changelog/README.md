@@ -147,6 +147,9 @@
 | [130](130-publish-opensource-script.md) | chore | 开源发布脚本 (publish-opensource.sh) | 2026-04-19 |
 | [131](131-soa-tombstone-check.md) | performance | SoA Tombstone Check 优化 | 2026-04-19 |
 | [132](132-docs-release-preparation.md) | docs | 公开发布前文档审计与修复 | 2026-04-19 |
+| [160](160-fix-ime-return-key.md) | bugfix | 修复中文输入法回车无法上屏问题 | 2026-05-11 |
+| [161](161-double-click-flash-animation.md) | feature | 双击结果行闪烁高亮动画反馈 | 2026-05-11 |
+| [162](162-multi-term-scoring.md) | feature | 多词搜索评分优化：名字命中率+词边界对齐 | 2026-05-11 |
 
 ## 统计
 

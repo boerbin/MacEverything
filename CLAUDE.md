@@ -14,12 +14,12 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project Mac
 ```
 
 ## 打包
+
 总是在master分支上打包
 
 ```bash
 hdiutil create -volname MacEverything -srcfolder build/Release/MacEverything.app -ov -format UDZO /Users/wujian/data/project/mac_everything/MacEverything.dmg
 ```
-
 
 # 软件开发工作流（Agent 必须遵守）
 
@@ -59,12 +59,13 @@ Agent 在接到功能或 bug 任务时，应先输出简短计划与测试清单
 若信息不足以判断根因，应先补充观测（日志、测试、最小复现），而不是先打补丁。
 
 ## 4. 编码规范
+
 **禁止出现超大文件**, 如果出现1000行以上的文件, 应该进行功能拆分和重构, 方便agent更好的理解文件
 
 ## 5. 测试组织规范
+
 - 独立的测试应放在 `tests/` 目录下的单独头文件中（如 `tests/test_xxx.h`），并在 `test_all.cpp` 中通过 `#include` 引入
 - **禁止**在 `test_all.cpp` 中直接实现测试函数，`test_all.cpp` 仅负责 include 测试模块、CLI 参数解析和 `main()` 调度
-
 
 ## 6. 变更验收（每次变更完成后必须执行）
 
@@ -72,10 +73,10 @@ Agent 在接到功能或 bug 任务时，应先输出简短计划与测试清单
 
 1. **退出当前运行的 app**（如果正在运行）
 2. **在 master 分支上构建并打包**：
-   ```bash
+  ```bash
    DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project MacEverything.xcodeproj -scheme MacEverything -configuration Release build SYMROOT=build
    hdiutil create -volname MacEverything -srcfolder build/Release/MacEverything.app -ov -format UDZO /Users/wujian/data/project/mac_everything/MacEverything.dmg
-   ```
+  ```
 3. **启动 app**：打开打包好的 dmg 并运行 MacEverything.app, 使用`open MacEverything.app --args --minimized`启动后最小化,降低对用户的打扰
 4. **通过 HTTP 服务做功能验证**：使用 `curl` 等工具对 `http://localhost:19860` 进行与本次变更相关的测试，验证功能正确性
 
@@ -83,8 +84,13 @@ Agent 在接到功能或 bug 任务时，应先输出简短计划与测试清单
 
 ## 快速自检（Agent 收尾前）
 
-- [ ] 变更在 Git 中，且 worktree/分支策略符合第 1 节  
-- [ ] 新行为有对应测试；关键路径有集成测试覆盖  
-- [ ] Bugfix 能说明根因与修复为何不会反复出现  
-- [ ] 没有任何未提交修改, 代码已经合并到master分支
-- [ ] 变更文档是否已经生成, 是否commit
+- 变更在 Git 中，且 worktree/分支策略符合第 1 节  
+- 新行为有对应测试；关键路径有集成测试覆盖  
+- Bugfix 能说明根因与修复为何不会反复出现  
+- 没有任何未提交修改, 代码已经合并到master分支
+- 变更文档是否已经生成, 是否commit
+
+
+
+
+

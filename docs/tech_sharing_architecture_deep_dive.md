@@ -43,7 +43,7 @@ MacEverything 是 macOS 上的全盘文件名搜索工具，对标 Windows 平�
 
 ## 2. 整体架构
 
-```dot
+```graphviz
 digraph architecture {
     rankdir=TB
     node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=11]
@@ -210,7 +210,7 @@ macOS 提供三种目录遍历 API：
 
 ### 并行扫描架构
 
-```dot
+```graphviz
 // DirectoryScanner 并行模型（DirectoryScanner.cpp）
 digraph scanner {
     rankdir=TB
@@ -265,7 +265,7 @@ digraph scanner {
 
 ### 查询执行管线
 
-```dot
+```graphviz
 // SearchEngineAdvancedQuery.cpp 执行流程
 digraph query_pipeline {
     rankdir=TB
@@ -324,7 +324,7 @@ pure-filter-soa-gcd    104.5         type:folder（全量 SoA 扫描）
 
 查询进入时，引擎根据查询特征自动选择最优搜索路径：
 
-```dot
+```graphviz
 // 搜索路径自动决策树
 digraph search_decision {
     rankdir=TB
@@ -420,7 +420,7 @@ Trigram = (a << 16) | (b << 8) | c;
 
 以查询 `*test*.cpp` 为例，展示 trigram 多段交集的完整求值过程：
 
-```dot
+```graphviz
 // Trigram 查询求值流程: *test*.cpp
 digraph trigram_eval {
     rankdir=TB
@@ -586,7 +586,7 @@ atom      = '<' or_expr '>'               // 分组（用 < > 而非括号）
 
 ### AST 变换管线
 
-```dot
+```graphviz
 // AST 变换管线示例: "usr/local test"
 digraph ast_transform {
     rankdir=TB
@@ -623,7 +623,7 @@ digraph ast_transform {
 
 ### 两阶段启动（Sub-Second Cold Start）
 
-```dot
+```graphviz
 // 两阶段启动流程
 digraph startup {
     rankdir=LR
@@ -713,7 +713,7 @@ Entry: [op(1B) | dataLen(4B) | data(变长) | crc32(4B)]
 
 从运行时变更到最终落盘的完整数据流：
 
-```dot
+```graphviz
 // 持久化生命周期：变更 → WAL → Compaction → v6
 digraph persistence_lifecycle {
     rankdir=LR
@@ -784,7 +784,7 @@ flush interval: [30s ←────────→ 600s]
 
 ### FSEvents 集成
 
-```dot
+```graphviz
 // FileSystemWatcher 事件处理流程（FileSystemWatcher.h/.cpp）
 digraph fsevents {
     rankdir=TB
@@ -840,7 +840,7 @@ rescanDebounceTimer_: GCD timer    // 5s 防抖
 
 ### Reader-Writer 锁分层
 
-```dot
+```graphviz
 // 锁层次（从外到内）
 digraph lock_hierarchy {
     rankdir=TB
@@ -896,7 +896,7 @@ digraph lock_hierarchy {
 
 Compaction 需要重组整个 SoA 存储，如果持有写锁会阻塞所有查询数秒。解法：
 
-```dot
+```graphviz
 // compactRecords() 三阶段 COW（SearchEngine.cpp）
 digraph cow_compaction {
     rankdir=LR
