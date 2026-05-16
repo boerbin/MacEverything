@@ -151,6 +151,7 @@
 | [161](161-double-click-flash-animation.md) | feature | 双击结果行闪烁高亮动画反馈 | 2026-05-11 |
 | [162](162-multi-term-scoring.md) | feature | 多词搜索评分优化：名字命中率+词边界对齐 | 2026-05-11 |
 | [164](164-builtin-llm-refactoring.md) | refactor | 内置 LLM：用 llama.cpp + Qwen2.5-0.5B 替代 Ollama/LiteLLM，移除语义搜索 | 2026-05-16 |
+| [166](166-nl-translation-data-test.md) | test | AI 搜索翻译数据驱动测试框架（part 86），TSV 加载 + token-set 顺序无关匹配 | 2026-05-16 |
 
 ## 统计
 
