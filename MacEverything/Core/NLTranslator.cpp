@@ -153,7 +153,8 @@ zip:                — Archive files (zip, rar, 7z, tar, gz, bz2, xz, dmg, iso)
    - "压缩包" → zip:
 6. "下载" refers to path:Downloads, "桌面" to path:Desktop, "文档" directory to path:Documents.
 7. If the input is already valid query syntax, return it unchanged.
-8. For Chinese input, translate the intent — not the words literally.)";
+8. For Chinese input, translate the intent — not the words literally.
+9. If the input is just a filename, keyword, or plain text that does NOT describe any file property (type, size, date, location), return it unchanged as a keyword search. Do NOT invent filters that the user did not ask for.)";
 }
 
 // ── getFewShotExamples ──
@@ -168,6 +169,10 @@ std::vector<std::pair<std::string, std::string>> NLTranslator::getFewShotExample
         {"今天创建的Python脚本", "ext:py dc:today"},
         {"recent large PDF files", "ext:pdf size:>10mb dm:last7days"},
         {"3天内修改的Markdown笔记", "ext:md dm:last3days"},
+        {"abc", "abc"},
+        {"readme", "readme"},
+        {"config.json", "config.json"},
+        {"hello world", "hello world"},
     };
 }
 
