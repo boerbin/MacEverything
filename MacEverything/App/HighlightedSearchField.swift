@@ -1,6 +1,10 @@
 import SwiftUI
 import AppKit
 
+extension Notification.Name {
+    static let grabSearchFieldFocus = Notification.Name("grabSearchFieldFocus")
+}
+
 // MARK: - Query Token Types for Syntax Highlighting
 
 enum QueryTokenType {
@@ -249,9 +253,22 @@ struct HighlightedSearchField: NSViewRepresentable {
         var parent: HighlightedSearchField
         weak var textView: NSTextView?
         var isUpdatingFromSwiftUI = false
+        private var focusObserver: NSObjectProtocol?
 
         init(_ parent: HighlightedSearchField) {
             self.parent = parent
+            self.focusObserver = nil
+            super.init()
+            focusObserver = NotificationCenter.default.addObserver(
+                forName: .grabSearchFieldFocus, object: nil, queue: .main
+            ) { [weak self] _ in
+                guard let tv = self?.textView, let window = tv.window else { return }
+                window.makeFirstResponder(tv)
+            }
+        }
+
+        deinit {
+            if let obs = focusObserver { NotificationCenter.default.removeObserver(obs) }
         }
 
         func textDidChange(_ notification: Notification) {
