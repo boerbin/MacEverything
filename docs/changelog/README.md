@@ -147,6 +147,7 @@
 | [130](130-publish-opensource-script.md) | chore | 开源发布脚本 (publish-opensource.sh) | 2026-04-19 |
 | [131](131-soa-tombstone-check.md) | performance | SoA Tombstone Check 优化 | 2026-04-19 |
 | [132](132-docs-release-preparation.md) | docs | 公开发布前文档审计与修复 | 2026-04-19 |
+| [164](164-builtin-llm-refactoring.md) | refactor | 内置 LLM：用 llama.cpp + Qwen2.5-0.5B 替代 Ollama/LiteLLM，移除语义搜索 | 2026-05-16 |
 
 ## 统计
 
