@@ -518,7 +518,9 @@ class SearchViewModel: ObservableObject {
         guard refreshThrottle.isFocused else { return }
 
         if isAISearch && !searchText.isEmpty && !isContentSearch {
-            performAITranslatedSearch(searchText)
+            if let cached = translatedQuery {
+                performSearch(cached)
+            }
         } else if !searchText.isEmpty && !isContentSearch {
             performSearch(searchText)
         } else if isContentSearch && !contentKeyword.isEmpty {
