@@ -22,13 +22,12 @@ struct AITranslateResponse: Codable {
 
 struct AIStatusResponse: Codable {
     let status: String
-    let backend: String
+    let aiAvailable: Bool
     let model: String
-    let backendAvailable: Bool
 
     enum CodingKeys: String, CodingKey {
-        case status, backend, model
-        case backendAvailable = "backend_available"
+        case status, model
+        case aiAvailable = "ai_available"
     }
 }
 

@@ -20,16 +20,6 @@ struct ContentFileItem: Identifiable {
     let fileType: UInt8
 }
 
-struct SemanticFileItem: Identifiable {
-    let id: String
-    let name: String
-    let path: String
-    let type: UInt8
-    let size: UInt64
-    let modTime: time_t
-    let similarity: Float
-}
-
 @MainActor
 class SearchViewModel: ObservableObject {
     @Published var searchText: String = ""
@@ -53,14 +43,8 @@ class SearchViewModel: ObservableObject {
     @Published var ghostSuggestion: String? = nil
     @Published var showAISetup: Bool = false
     @Published var isAISearch: Bool = false
-    @Published var semanticResults: [SemanticFileItem] = []
-    @Published var isSemanticSearching: Bool = false
     @Published var isAITranslating: Bool = false
     @Published var translatedQuery: String? = nil
-    @Published var isVectorSearch: Bool = false
-    @Published var semanticIndexedCount: UInt32 = 0
-    @Published var isSemanticIndexing: Bool = false
-    @Published var semanticIndexProgress: (indexed: UInt32, total: UInt32)?
     @Published var showIndexCorruptionAlert: Bool = false
     var indexCorruptionMessage: String = ""
 
@@ -132,10 +116,7 @@ class SearchViewModel: ObservableObject {
         searchTask?.cancel()
         searchGeneration &+= 1
         bridge.cancelSession(Self.guiSessionId)
-        if isAISearch && isVectorSearch {
-            let query = String(searchText.dropFirst(7))
-            if !query.isEmpty { performSemanticSearch(query) }
-        } else if isAISearch {
+        if isAISearch {
             performAITranslatedSearch(searchText)
         } else {
             performSearch(searchText)
@@ -144,7 +125,7 @@ class SearchViewModel: ObservableObject {
 
     func toggleAISearch() {
         if !isAISearch {
-            if !bridge.isLiteLLMAvailable() {
+            if !bridge.isAIAvailable() {
                 showAISetup = true
                 return
             }
@@ -152,8 +133,6 @@ class SearchViewModel: ObservableObject {
         } else {
             isAISearch = false
         }
-        semanticResults = []
-        isVectorSearch = false
         isAITranslating = false
         translatedQuery = nil
         if !searchText.isEmpty {
@@ -189,21 +168,6 @@ class SearchViewModel: ObservableObject {
                 if self.isContentSearch && !self.contentKeyword.isEmpty {
                     self.performContentSearch(self.contentKeyword)
                 }
-            }
-        }
-
-        bridge.onSemanticIndexProgress = { [weak self] indexed, total in
-            Task { @MainActor in
-                self?.isSemanticIndexing = true
-                self?.semanticIndexProgress = (indexed, total)
-            }
-        }
-
-        bridge.onSemanticIndexComplete = { [weak self] totalIndexed in
-            Task { @MainActor in
-                self?.isSemanticIndexing = false
-                self?.semanticIndexProgress = nil
-                self?.semanticIndexedCount = totalIndexed
             }
         }
 
@@ -294,11 +258,8 @@ class SearchViewModel: ObservableObject {
             cachedResults = []
             loadedCount = 0
             isContentSearch = false
-            isVectorSearch = false
             contentResults = []
             contentKeyword = "" // H-9: reset cached keyword
-            semanticResults = []
-            isSemanticSearching = false
             isAITranslating = false
             translatedQuery = nil
             ghostSuggestion = nil
@@ -322,33 +283,8 @@ class SearchViewModel: ObservableObject {
         showingRecent = false
 
         let lowerText = text.lowercased()
-        if isAISearch && lowerText.hasPrefix("infile:") {
-            // AI + infile: → vector/semantic search
-            isContentSearch = false
-            isVectorSearch = true
-            contentResults = []
-            contentKeyword = ""
-            displayItems = []
-            cachedResults = []
-            loadedCount = 0
-
-            let query = String(text.dropFirst(7))
-            guard !query.isEmpty else {
-                semanticResults = []
-                totalMatches = 0
-                queryTimeMs = 0
-                return
-            }
-
-            searchTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s debounce for AI
-                guard !Task.isCancelled else { return }
-                performSemanticSearch(query)
-            }
-        } else if lowerText.hasPrefix("infile:") {
-            // Normal infile: → content search
+        if lowerText.hasPrefix("infile:") {
             isContentSearch = true
-            isVectorSearch = false
             displayItems = []
             cachedResults = []
             loadedCount = 0
@@ -369,7 +305,6 @@ class SearchViewModel: ObservableObject {
             }
         } else {
             isContentSearch = false
-            isVectorSearch = false
             contentResults = []
             contentKeyword = ""
 
@@ -429,43 +364,11 @@ class SearchViewModel: ObservableObject {
         }
     }
 
-    private func performSemanticSearch(_ query: String) {
-        let bridge = self.bridge
-        let gen = searchGeneration
-        isSemanticSearching = true
-        displayItems = []
-        Task.detached { [weak self] in
-            let start = CFAbsoluteTimeGetCurrent()
-            let results = bridge.semanticSearch(query, maxResults: 50)
-            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-
-            var items: [SemanticFileItem] = []
-            items.reserveCapacity(results.count)
-            for r in results {
-                items.append(SemanticFileItem(
-                    id: "\(r.path)/\(r.name)",
-                    name: r.name, path: r.path,
-                    type: r.type, size: r.size,
-                    modTime: r.modTime, similarity: r.similarity
-                ))
-            }
-
-            await MainActor.run { [weak self] in
-                guard let self, self.searchGeneration == gen else { return }
-                self.semanticResults = items
-                self.totalMatches = items.count
-                self.queryTimeMs = elapsed
-                self.isSemanticSearching = false
-            }
-        }
-    }
-
     private func performAITranslatedSearch(_ query: String) {
         let bridge = self.bridge
         let gen = searchGeneration
         isAITranslating = true
         translatedQuery = nil
-        semanticResults = []
         Task.detached { [weak self] in
             let result = bridge.translateQuery(query)
             let success = result["success"] as? Bool ?? false
@@ -611,14 +514,10 @@ class SearchViewModel: ObservableObject {
         isSyncing = bridge.isSyncing
         isBuildingIndex = bridge.isPhase2Pending
         contentIndexedCount = bridge.contentIndexedFileCount()
-        semanticIndexedCount = bridge.semanticIndexedCount()
 
         guard refreshThrottle.isFocused else { return }
 
-        if isAISearch && isVectorSearch && !searchText.isEmpty {
-            let query = String(searchText.dropFirst(7))
-            if !query.isEmpty { performSemanticSearch(query) }
-        } else if isAISearch && !searchText.isEmpty && !isContentSearch {
+        if isAISearch && !searchText.isEmpty && !isContentSearch {
             performAITranslatedSearch(searchText)
         } else if !searchText.isEmpty && !isContentSearch {
             performSearch(searchText)
@@ -699,16 +598,7 @@ class SearchViewModel: ObservableObject {
         guard isAISearch, !searchText.isEmpty else { return }
         searchTask?.cancel()
         searchGeneration &+= 1
-
-        let text = searchText
-        let lowerText = text.lowercased()
-        if lowerText.hasPrefix("infile:") {
-            let query = String(text.dropFirst(7))
-            guard !query.isEmpty else { return }
-            performSemanticSearch(query)
-        } else {
-            performAITranslatedSearch(text)
-        }
+        performAITranslatedSearch(searchText)
     }
 
     func acceptGhostSuggestion() {
