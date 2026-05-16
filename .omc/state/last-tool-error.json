@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"SOCKS_HOST=127.0.0.1 SOCKS_PORT=10808 nohup node ~/.local/bin/socks2http.js > /tmp/socks2http.log 2>&1 &\\nsleep 2\\nlsof -iTCP:53731 -sTCP:LISTEN -t 2>/dev/null && echo \\\"OK: listening\\\" ||...",
-  "error": "Exit code 7\nFAIL: not listening\n000",
-  "timestamp": "2026-05-15T15:08:34.871Z",
-  "retry_count": 1
+  "tool_input_preview": "{\"command\":\"git checkout -- .omc/state/hud-stdin-cache.json && git merge worktree-feat+short-query-cache --no-edit\",\"description\":\"Clear conflict and merge\"}",
+  "error": "Exit code 1\nAuto-merging .omc/state/hud-stdin-cache.json\nCONFLICT (content): Merge conflict in .omc/state/hud-stdin-cache.json\nAuto-merging .omc/state/sessions/37d9797d-d14c-4459-af16-1550e1360ef6/hud-state.json\nCONFLICT (add/add): Merge conflict in .omc/state/sessions/37d9797d-d14c-4459-af16-1550e1360ef6/hud-state.json\nAuto-merging MacEverything/Core/SearchEngine.h\nCONFLICT (content): Merge conflict in MacEverything/Core/SearchEngine.h\nAuto-merging MacEverything/Core/SearchEngineAdvancedQuery.c...",
+  "timestamp": "2026-05-16T08:19:49.475Z",
+  "retry_count": 2
 }

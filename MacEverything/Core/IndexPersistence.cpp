@@ -39,6 +39,10 @@ uint64_t IndexPersistence::load() {
             lastEventId = meta.lastEventId;
             LOG_INFO("IndexPersistence", "Loaded v6 flat index, lastEventId=" << lastEventId
                       << ", liveRecords=" << engine_->liveRecordCount());
+            std::string cachePath = v6Path_ + ".sqcache";
+            if (engine_->getShortQueryCache().loadFrom(cachePath)) {
+                LOG_INFO("IndexPersistence", "Loaded short query cache from disk");
+            }
         } else {
             LOG_ERROR("IndexPersistence", "v6 flat index corrupt, trying paged format");
         }
@@ -179,6 +183,9 @@ void IndexPersistence::flush(const IndexMetadata& metadata, bool force) {
     if (writeOk) {
         LOG_INFO("IndexPersistence", "Flushed v6 flat index, lastEventId=" << metadata.lastEventId
                   << ", liveRecords=" << engine_->liveRecordCount());
+        // Save short query cache alongside the index
+        std::string cachePath = v6Path_ + ".sqcache";
+        engine_->getShortQueryCache().saveTo(cachePath);
     } else {
         LOG_ERROR("IndexPersistence", "Failed to flush paged index — keeping old WAL for recovery");
         if (oldWal) oldWal->close();

@@ -25,6 +25,7 @@
 		A100000F /* IndexPersistence.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000019; };
 		A1000010 /* ShortcutSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001A; };
 		A1000011 /* ContentIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A200001C; };
+		A10000A0 /* ShortQueryCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A20000A0; };
 		A1000012 /* ContentIndexPersistence.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A200001E; };
 		A1000013 /* ContentResultRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001F; };
 		A1000014 /* ContentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000020; };
@@ -118,6 +119,8 @@
 		A200001A /* ShortcutSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutSettingsView.swift; sourceTree = "<group>"; };
 		A200001B /* ContentIndex.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ContentIndex.h; sourceTree = "<group>"; };
 		A200001C /* ContentIndex.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ContentIndex.cpp; sourceTree = "<group>"; };
+		A20000A0 /* ShortQueryCache.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShortQueryCache.cpp; sourceTree = "<group>"; };
+		A20000A1 /* ShortQueryCache.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShortQueryCache.h; sourceTree = "<group>"; };
 		A200001D /* ContentIndexPersistence.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ContentIndexPersistence.h; sourceTree = "<group>"; };
 		A200001E /* ContentIndexPersistence.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ContentIndexPersistence.cpp; sourceTree = "<group>"; };
 		A200001F /* ContentResultRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentResultRow.swift; sourceTree = "<group>"; };
@@ -342,6 +345,8 @@
 				A2000019 /* IndexPersistence.cpp */,
 				A200001B /* ContentIndex.h */,
 				A200001C /* ContentIndex.cpp */,
+				A20000A0 /* ShortQueryCache.cpp */,
+				A20000A1 /* ShortQueryCache.h */,
 				A200001D /* ContentIndexPersistence.h */,
 				A200001E /* ContentIndexPersistence.cpp */,
 				A2000024 /* SearchEnginePersistence.cpp */,
@@ -511,6 +516,7 @@
 				A100000F /* IndexPersistence.cpp in Sources */,
 				A1000010 /* ShortcutSettingsView.swift in Sources */,
 				A1000011 /* ContentIndex.cpp in Sources */,
+				A10000A0 /* ShortQueryCache.cpp in Sources */,
 				A1000012 /* ContentIndexPersistence.cpp in Sources */,
 				A1000013 /* ContentResultRow.swift in Sources */,
 				A1000014 /* ContentSettingsView.swift in Sources */,

@@ -20,6 +20,7 @@
 #include "IndexWAL.h"
 #include "QueryAST.h"
 #include "StructuredQueryParser.h"
+#include "ShortQueryCache.h"
 
 /// Deduplication table for directory path strings.
 /// Interns unique paths and returns a compact uint32_t index.
@@ -133,6 +134,12 @@ public:
 
     /// Whether Phase 2 is pending (trigram indices not yet built).
     bool isPhase2Pending() const { return phase2Pending_.load(std::memory_order_acquire); }
+
+    /// Build short query cache (call after Phase 2 or compaction, under shared_lock).
+    void buildShortQueryCache();
+
+    /// Access short query cache (for persistence).
+    ShortQueryCache& getShortQueryCache() { return shortQueryCache_; }
 
     /// Snapshot data for v6 serialization (thread-safe).
     struct V6Snapshot {
@@ -443,7 +450,7 @@ private:
     /// Score layout (lower = better):
     ///   bits 16-23: name miss count (# of query terms NOT in filename)
     ///   bits 8-15:  match quality sum (per-term: 0=exact,1=prefix,2=word-boundary,3=substring)
-    ///   bits 0-7:   path length bucket (min(fullPathLen/16, 255))
+    ///   bits 0-7:   path length (min(fullPathLen, 255))
     struct Match { uint32_t idx; uint32_t score; };
 
     static inline uint32_t encodeScore(uint8_t priority, uint32_t pathLen) {
@@ -499,6 +506,9 @@ private:
 
     std::shared_ptr<IndexWAL> wal_;
     std::atomic<uint64_t> compactionGen_{0};
+
+    // Short query cache: pre-computed top 100 for 1-2 char ASCII queries
+    ShortQueryCache shortQueryCache_;
 
     // Phase 2 two-stage startup: trigram indices built in background
     std::atomic<bool> phase2Pending_{false};
