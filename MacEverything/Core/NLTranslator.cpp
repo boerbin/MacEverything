@@ -1,5 +1,5 @@
 #include "NLTranslator.h"
-#include "LiteLLMBackend.h"
+#include "IModelBackend.h"
 #include <algorithm>
 #include <cctype>
 #include <regex>
@@ -36,8 +36,8 @@ static std::string trim(const std::string& s) {
 
 // ── Constructor ──
 
-NLTranslator::NLTranslator(std::shared_ptr<LiteLLMBackend> client)
-    : client_(std::move(client)) {}
+NLTranslator::NLTranslator(std::shared_ptr<IModelBackend> backend)
+    : backend_(std::move(backend)) {}
 
 // ── looksLikeQuerySyntax ──
 
@@ -217,7 +217,7 @@ TranslationResult NLTranslator::translate(const std::string& query) {
     }
 
     // Need LLM client
-    if (!client_) {
+    if (!backend_) {
         result.translatedQuery = trimmed;
         result.success = false;
         result.error = "No LLM client available";
@@ -226,7 +226,7 @@ TranslationResult NLTranslator::translate(const std::string& query) {
 
     try {
         auto messages = buildMessages(trimmed);
-        std::string rawResponse = client_->chat(messages);
+        std::string rawResponse = backend_->chat(messages);
         std::string translated = cleanLLMResponse(rawResponse);
 
         if (translated.empty()) {

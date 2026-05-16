@@ -4,7 +4,7 @@
 #include <utility>
 #include <memory>
 
-class LiteLLMBackend;
+class IModelBackend;
 
 struct TranslationResult {
     std::string originalQuery;
@@ -16,11 +16,10 @@ struct TranslationResult {
 
 class NLTranslator {
 public:
-    explicit NLTranslator(std::shared_ptr<LiteLLMBackend> client);
+    explicit NLTranslator(std::shared_ptr<IModelBackend> backend);
 
     TranslationResult translate(const std::string& query);
 
-    // Static utilities (testable without LLM)
     static bool looksLikeQuerySyntax(const std::string& text);
     static std::string cleanLLMResponse(const std::string& raw);
     static std::string getSystemPrompt();
@@ -28,5 +27,5 @@ public:
     static std::vector<std::pair<std::string, std::string>> buildMessages(const std::string& userQuery);
 
 private:
-    std::shared_ptr<LiteLLMBackend> client_;
+    std::shared_ptr<IModelBackend> backend_;
 };
