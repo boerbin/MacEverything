@@ -53,8 +53,9 @@ bool ModelManager::switchModel(const std::string& modelFileName) {
 }
 
 void ModelManager::loadAsync(std::function<void(bool success)> onReady) {
-    std::thread([this, onReady = std::move(onReady)]() {
-        auto models = availableModels();
+    auto self = shared_from_this();
+    std::thread([self, onReady = std::move(onReady)]() {
+        auto models = self->availableModels();
         if (models.empty()) {
             if (onReady) onReady(false);
             return;
@@ -67,7 +68,7 @@ void ModelManager::loadAsync(std::function<void(bool success)> onReady) {
                 break;
             }
         }
-        bool ok = switchModel(chosen);
+        bool ok = self->switchModel(chosen);
         if (onReady) onReady(ok);
     }).detach();
 }

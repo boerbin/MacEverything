@@ -136,6 +136,7 @@ private:
     std::shared_mutex contentMutex_;
     std::shared_mutex persistenceMutex_;
     std::shared_mutex contentPersistenceMutex_;
+    std::atomic<bool> modelLoadDone_{true};
 
     // ── Dispatch queues & groups ──
     dispatch_queue_t mutationQueue_;

@@ -18,11 +18,11 @@ ServiceEngine::ServiceEngine(const ServiceConfig& config)
     watcher_ = std::make_shared<FileSystemWatcher>("live");
     contentIndex_ = std::make_shared<ContentIndex>();
     {
-        std::string appSupportPath = config.cachePath;
-        // Go up from Caches to Application Support
-        auto appSupport = std::filesystem::path(appSupportPath).parent_path().parent_path();
-        std::string modelsDir = (appSupport / "MacEverything" / "models").string();
+        const char* home = std::getenv("HOME");
+        if (!home) home = "/tmp";
+        std::string modelsDir = std::string(home) + "/Library/Application Support/MacEverything/models";
         modelManager_ = std::make_shared<ModelManager>(modelsDir);
+        modelLoadDone_.store(false, std::memory_order_release);
         modelManager_->loadAsync([this](bool success) {
             if (success) {
                 auto backend = modelManager_->currentBackend();
@@ -31,6 +31,8 @@ ServiceEngine::ServiceEngine(const ServiceConfig& config)
                     nlTranslator_ = std::make_shared<NLTranslator>(backend);
                 }
             }
+            modelLoadDone_.store(true, std::memory_order_release);
+            modelLoadDone_.notify_all();
         });
     }
     mutationQueue_ = dispatch_queue_create("com.maceverything.mutation", DISPATCH_QUEUE_SERIAL);
@@ -39,6 +41,8 @@ ServiceEngine::ServiceEngine(const ServiceConfig& config)
 }
 
 ServiceEngine::~ServiceEngine() {
+    // Wait for async model load to finish before destroying members
+    modelLoadDone_.wait(false, std::memory_order_acquire);
     shutdown();
 }
 

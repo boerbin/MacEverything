@@ -15,7 +15,7 @@ struct ModelInfo {
     uint64_t fileSize = 0;
 };
 
-class ModelManager {
+class ModelManager : public std::enable_shared_from_this<ModelManager> {
 public:
     explicit ModelManager(const std::string& modelsDir);
     ~ModelManager() = default;
