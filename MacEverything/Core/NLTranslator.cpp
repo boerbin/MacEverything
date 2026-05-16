@@ -1,10 +1,13 @@
 #include "NLTranslator.h"
 #include "IModelBackend.h"
+#include "Logger.h"
 #include <algorithm>
 #include <cctype>
 #include <regex>
 #include <fstream>
 #include <sstream>
+#include <chrono>
+#include <iomanip>
 
 // ── Known filter prefixes (ported from Python KNOWN_FILTERS) ──
 
@@ -316,11 +319,15 @@ TranslationResult NLTranslator::translate(const std::string& query) {
         return result;
     }
 
+    using Clock = std::chrono::steady_clock;
+    auto totalStart = Clock::now();
+
     // Syntax passthrough
     if (looksLikeQuerySyntax(trimmed)) {
         result.translatedQuery = trimmed;
         result.success = true;
         result.alreadySyntax = true;
+        LOG_INFO("AI", "translate passthrough: \"" << trimmed << "\" (already syntax)");
         return result;
     }
 
@@ -328,24 +335,42 @@ TranslationResult NLTranslator::translate(const std::string& query) {
     if (!backend_) {
         result.translatedQuery = trimmed;
         result.success = false;
-        result.error = "No LLM client available";
+        result.error = "No AI backend available";
+        LOG_ERROR("AI", "translate failed: no backend available");
         return result;
     }
 
     try {
+        auto msgStart = Clock::now();
         auto messages = buildMessages(trimmed);
+        auto msgMs = std::chrono::duration<double, std::milli>(Clock::now() - msgStart).count();
+
+        auto inferStart = Clock::now();
         std::string rawResponse = backend_->chat(messages);
+        auto inferMs = std::chrono::duration<double, std::milli>(Clock::now() - inferStart).count();
+
+        auto cleanStart = Clock::now();
         std::string translated = cleanLLMResponse(rawResponse);
+        auto cleanMs = std::chrono::duration<double, std::milli>(Clock::now() - cleanStart).count();
+
+        auto totalMs = std::chrono::duration<double, std::milli>(Clock::now() - totalStart).count();
 
         if (translated.empty()) {
             result.translatedQuery = trimmed;
             result.success = false;
             result.error = "LLM returned empty response";
+            LOG_ERROR("AI", "translate failed: empty response for \"" << trimmed
+                      << "\" | infer=" << std::fixed << std::setprecision(1) << inferMs << "ms");
             return result;
         }
 
         result.translatedQuery = translated;
         result.success = true;
+
+        LOG_INFO("AI", "translate: \"" << trimmed << "\" -> \"" << translated
+                 << "\" | build=" << std::fixed << std::setprecision(1) << msgMs
+                 << "ms infer=" << inferMs << "ms clean=" << cleanMs
+                 << "ms total=" << totalMs << "ms");
     } catch (const std::exception& e) {
         result.translatedQuery = trimmed;
         result.success = false;
@@ -353,6 +378,7 @@ TranslationResult NLTranslator::translate(const std::string& query) {
         if (result.error.empty()) {
             result.error = "LLM request failed";
         }
+        LOG_ERROR("AI", "translate exception: \"" << trimmed << "\" | error=" << result.error);
     }
 
     return result;
