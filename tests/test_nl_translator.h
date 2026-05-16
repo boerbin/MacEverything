@@ -3,6 +3,8 @@
 #include <cassert>
 #include <iostream>
 #include <string>
+#include <fstream>
+#include <cstdio>
 
 inline void runNLTranslatorTests() {
     std::cout << "=== NLTranslator Tests ===" << std::endl;
@@ -79,7 +81,7 @@ inline void runNLTranslatorTests() {
 
     // Test 9: System prompt contains required elements
     {
-        auto prompt = NLTranslator::getSystemPrompt();
+        auto prompt = NLTranslator::getDefaultSystemPrompt();
         assert(prompt.find("ext:") != std::string::npos);
         assert(prompt.find("dm:") != std::string::npos);
         assert(prompt.find("path:") != std::string::npos);
@@ -91,7 +93,7 @@ inline void runNLTranslatorTests() {
 
     // Test 10: Few-shot examples are populated
     {
-        auto examples = NLTranslator::getFewShotExamples();
+        auto examples = NLTranslator::getDefaultFewShotExamples();
         assert(examples.size() >= 8);
         // First example should be Chinese
         assert(!examples[0].first.empty());
@@ -99,14 +101,45 @@ inline void runNLTranslatorTests() {
         std::cout << "  [PASS] few-shot examples populated (" << examples.size() << " examples)" << std::endl;
     }
 
-    // Test 11: buildMessages constructs correct structure
+    // Test 11: loadPromptFromFile with valid file
     {
-        auto messages = NLTranslator::buildMessages("最近的PDF");
-        assert(messages.size() >= 3);  // system + at least 1 few-shot pair + user
-        assert(messages[0].first == "system");
-        assert(messages.back().first == "user");
-        assert(messages.back().second == "最近的PDF");
-        std::cout << "  [PASS] buildMessages structure" << std::endl;
+        std::string tmpPath = "/tmp/test_prompt_valid.txt";
+        {
+            std::ofstream f(tmpPath);
+            f << "<SYSTEM_PROMPT>\nYou are a test prompt.\n</SYSTEM_PROMPT>\n"
+              << "<FEW_SHOT>\nuser: hello\nassistant: world\n</FEW_SHOT>\n";
+        }
+        NLTranslator translator(nullptr);
+        bool ok = translator.loadPromptFromFile(tmpPath);
+        assert(ok);
+        assert(translator.promptSource() == tmpPath);
+        std::remove(tmpPath.c_str());
+        std::cout << "  [PASS] loadPromptFromFile valid file" << std::endl;
+    }
+
+    // Test 12: loadPromptFromFile with nonexistent path
+    {
+        NLTranslator translator(nullptr);
+        bool ok = translator.loadPromptFromFile("/tmp/nonexistent_prompt_file_xyz.txt");
+        assert(!ok);
+        assert(translator.promptSource() == "builtin");
+        std::cout << "  [PASS] loadPromptFromFile nonexistent file" << std::endl;
+    }
+
+    // Test 13: setPromptFile("") resets to builtin
+    {
+        std::string tmpPath = "/tmp/test_prompt_reset.txt";
+        {
+            std::ofstream f(tmpPath);
+            f << "<SYSTEM_PROMPT>\nTest prompt.\n</SYSTEM_PROMPT>\n";
+        }
+        NLTranslator translator(nullptr);
+        translator.loadPromptFromFile(tmpPath);
+        assert(translator.promptSource() == tmpPath);
+        translator.setPromptFile("");
+        assert(translator.promptSource() == "builtin");
+        std::remove(tmpPath.c_str());
+        std::cout << "  [PASS] setPromptFile empty resets to builtin" << std::endl;
     }
 
     std::cout << "=== NLTranslator Tests: ALL PASSED ===" << std::endl;

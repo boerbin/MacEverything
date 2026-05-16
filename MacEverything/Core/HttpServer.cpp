@@ -332,6 +332,8 @@ std::string HttpServer::route(const HttpRequest& req) {
             return handleGetContentConfig();
         } else if (req.path == "/api/ai/status") {
             return handleAIStatus();
+        } else if (req.path == "/api/ai/prompt") {
+            return handleGetPrompt();
         }
     } else if (req.method == "POST") {
         if (req.path == "/api/index/rebuild") {
@@ -342,6 +344,8 @@ std::string HttpServer::route(const HttpRequest& req) {
             return handleSetContentConfig(req.body);
         } else if (req.path == "/api/ai/translate") {
             return handleAITranslate(req.body);
+        } else if (req.path == "/api/ai/prompt") {
+            return handleSetPrompt(req.body);
         }
     } else {
         return errorResponse(405, "Method not allowed");
@@ -725,6 +729,45 @@ std::string HttpServer::handleAIStatus() {
          << ",\"translator_available\":" << (translatorAvailable ? "true" : "false")
          << "}";
     return jsonResponse(200, json.str());
+}
+
+std::string HttpServer::handleGetPrompt() {
+    auto translator = getNLTranslator_ ? getNLTranslator_() : nullptr;
+    if (!translator) return errorResponse(503, "Translator not available");
+    auto source = translator->promptSource();
+    std::ostringstream os;
+    if (source == "builtin") {
+        os << "{\"source\":\"builtin\"}";
+    } else {
+        os << "{\"source\":\"file\",\"path\":\"" << jsonEscapeString(source) << "\"}";
+    }
+    return jsonResponse(200, os.str());
+}
+
+std::string HttpServer::handleSetPrompt(const std::string& body) {
+    auto translator = getNLTranslator_ ? getNLTranslator_() : nullptr;
+    if (!translator) return errorResponse(503, "Translator not available");
+    std::string path;
+    auto pos = body.find("\"path\"");
+    if (pos != std::string::npos) {
+        pos = body.find("\"", pos + 6);
+        if (pos != std::string::npos) {
+            pos++;
+            auto end = body.find("\"", pos);
+            if (end != std::string::npos) {
+                path = body.substr(pos, end - pos);
+            }
+        }
+    }
+    translator->setPromptFile(path);
+    auto source = translator->promptSource();
+    std::ostringstream os;
+    if (source == "builtin") {
+        os << "{\"source\":\"builtin\",\"message\":\"Reset to built-in prompt\"}";
+    } else {
+        os << "{\"source\":\"file\",\"path\":\"" << jsonEscapeString(source) << "\",\"message\":\"Prompt loaded\"}";
+    }
+    return jsonResponse(200, os.str());
 }
 
 // ---------------------------------------------------------------------------

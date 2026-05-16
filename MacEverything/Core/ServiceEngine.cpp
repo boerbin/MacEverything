@@ -29,6 +29,9 @@ ServiceEngine::ServiceEngine(const ServiceConfig& config)
                 if (backend) {
                     std::unique_lock lock(engineMutex_);
                     nlTranslator_ = std::make_shared<NLTranslator>(backend);
+                    std::string home = std::getenv("HOME") ? std::getenv("HOME") : "";
+                    std::string promptPath = home + "/Library/Application Support/MacEverything/prompt.txt";
+                    nlTranslator_->loadPromptFromFile(promptPath);
                 }
             }
             modelLoadDone_.store(true, std::memory_order_release);

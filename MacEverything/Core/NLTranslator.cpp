@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <regex>
+#include <fstream>
+#include <sstream>
 
 // ── Known filter prefixes (ported from Python KNOWN_FILTERS) ──
 
@@ -37,7 +39,9 @@ static std::string trim(const std::string& s) {
 // ── Constructor ──
 
 NLTranslator::NLTranslator(std::shared_ptr<IModelBackend> backend)
-    : backend_(std::move(backend)) {}
+    : backend_(std::move(backend)) {
+    resetToDefaults();
+}
 
 // ── looksLikeQuerySyntax ──
 
@@ -90,9 +94,9 @@ std::string NLTranslator::cleanLLMResponse(const std::string& raw) {
     return trim(text);
 }
 
-// ── getSystemPrompt ──
+// ── getDefaultSystemPrompt ──
 
-std::string NLTranslator::getSystemPrompt() {
+std::string NLTranslator::getDefaultSystemPrompt() {
     return R"(You are a query translator for MacEverything, a macOS file search tool.
 Your job: convert the user's natural language description into MacEverything query syntax.
 
@@ -157,9 +161,9 @@ zip:                — Archive files (zip, rar, 7z, tar, gz, bz2, xz, dmg, iso)
 9. If the input is just a filename, keyword, or plain text that does NOT describe any file property (type, size, date, location), return it unchanged as a keyword search. Do NOT invent filters that the user did not ask for.)";
 }
 
-// ── getFewShotExamples ──
+// ── getDefaultFewShotExamples ──
 
-std::vector<std::pair<std::string, std::string>> NLTranslator::getFewShotExamples() {
+std::vector<std::pair<std::string, std::string>> NLTranslator::getDefaultFewShotExamples() {
     return {
         {"最近下载的PDF", "path:Downloads ext:pdf dm:last7days"},
         {"上个月修改的Word文档", "ext:doc;docx dm:lastmonth"},
@@ -176,16 +180,115 @@ std::vector<std::pair<std::string, std::string>> NLTranslator::getFewShotExample
     };
 }
 
+// ── Prompt management ──
+
+void NLTranslator::resetToDefaults() {
+    systemPrompt_ = getDefaultSystemPrompt();
+    fewShotExamples_ = getDefaultFewShotExamples();
+    usingFilePrompt_ = false;
+    promptFilePath_.clear();
+}
+
+bool NLTranslator::parsePromptFile(const std::string& content) {
+    const std::string sysOpen = "<SYSTEM_PROMPT>";
+    const std::string sysClose = "</SYSTEM_PROMPT>";
+    const std::string fewOpen = "<FEW_SHOT>";
+    const std::string fewClose = "</FEW_SHOT>";
+
+    auto sysStart = content.find(sysOpen);
+    auto sysEnd = content.find(sysClose);
+    if (sysStart == std::string::npos || sysEnd == std::string::npos || sysEnd <= sysStart)
+        return false;
+
+    std::string sysPrompt = content.substr(sysStart + sysOpen.size(), sysEnd - sysStart - sysOpen.size());
+    // trim
+    while (!sysPrompt.empty() && (sysPrompt.front() == '\n' || sysPrompt.front() == '\r'))
+        sysPrompt.erase(sysPrompt.begin());
+    while (!sysPrompt.empty() && (sysPrompt.back() == '\n' || sysPrompt.back() == '\r'))
+        sysPrompt.pop_back();
+
+    if (sysPrompt.empty()) return false;
+
+    auto fewStart = content.find(fewOpen);
+    auto fewEnd = content.find(fewClose);
+    std::vector<std::pair<std::string, std::string>> examples;
+
+    if (fewStart != std::string::npos && fewEnd != std::string::npos && fewEnd > fewStart) {
+        std::string fewSection = content.substr(fewStart + fewOpen.size(), fewEnd - fewStart - fewOpen.size());
+        std::istringstream iss(fewSection);
+        std::string line;
+        std::string pendingUser;
+        while (std::getline(iss, line)) {
+            // trim line
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+                line.pop_back();
+            if (line.empty()) continue;
+
+            if (line.substr(0, 5) == "user:" || line.substr(0, 6) == "user: ") {
+                auto colonPos = line.find(':');
+                pendingUser = line.substr(colonPos + 1);
+                while (!pendingUser.empty() && pendingUser.front() == ' ')
+                    pendingUser.erase(pendingUser.begin());
+            } else if ((line.substr(0, 10) == "assistant:" || line.substr(0, 11) == "assistant: ") && !pendingUser.empty()) {
+                auto colonPos = line.find(':');
+                std::string assistantVal = line.substr(colonPos + 1);
+                while (!assistantVal.empty() && assistantVal.front() == ' ')
+                    assistantVal.erase(assistantVal.begin());
+                examples.emplace_back(pendingUser, assistantVal);
+                pendingUser.clear();
+            }
+        }
+    }
+
+    systemPrompt_ = sysPrompt;
+    fewShotExamples_ = examples; // can be empty if no FEW_SHOT section
+    return true;
+}
+
+bool NLTranslator::loadPromptFromFile(const std::string& path) {
+    std::lock_guard<std::mutex> lock(promptMutex_);
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        resetToDefaults();
+        return false;
+    }
+    std::ostringstream ss;
+    ss << file.rdbuf();
+    std::string content = ss.str();
+    if (content.empty() || !parsePromptFile(content)) {
+        resetToDefaults();
+        return false;
+    }
+    usingFilePrompt_ = true;
+    promptFilePath_ = path;
+    return true;
+}
+
+void NLTranslator::setPromptFile(const std::string& path) {
+    if (path.empty()) {
+        std::lock_guard<std::mutex> lock(promptMutex_);
+        resetToDefaults();
+        return;
+    }
+    loadPromptFromFile(path);
+}
+
+std::string NLTranslator::promptSource() const {
+    std::lock_guard<std::mutex> lock(promptMutex_);
+    return usingFilePrompt_ ? promptFilePath_ : "builtin";
+}
+
 // ── buildMessages ──
 
 std::vector<std::pair<std::string, std::string>> NLTranslator::buildMessages(const std::string& userQuery) {
+    std::lock_guard<std::mutex> lock(promptMutex_);
     std::vector<std::pair<std::string, std::string>> messages;
 
     // System prompt
-    messages.emplace_back("system", getSystemPrompt());
+    messages.emplace_back("system", systemPrompt_);
 
     // Few-shot examples as user/assistant pairs
-    for (const auto& [nl, query] : getFewShotExamples()) {
+    for (const auto& [nl, query] : fewShotExamples_) {
         messages.emplace_back("user", nl);
         messages.emplace_back("assistant", query);
     }

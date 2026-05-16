@@ -73,6 +73,8 @@ private:
     // AI endpoints
     std::string handleAITranslate(const std::string& body);
     std::string handleAIStatus();
+    std::string handleGetPrompt();
+    std::string handleSetPrompt(const std::string& body);
 
     std::string jsonResponse(int status, const std::string& body);
     std::string errorResponse(int status, const std::string& message);
