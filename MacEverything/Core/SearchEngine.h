@@ -528,7 +528,7 @@ private:
             return modTime > o.modTime || (modTime == o.modTime && index > o.index);
         }
     };
-    std::set<RecentEntry> recentCache_;
+    BoundedSortedVec<RecentEntry> recentCache_{kRecentCacheSize};
     void rebuildRecentCache();
     void addToRecentCache(uint32_t idx, time_t modTime);
     void removeFromRecentCache(uint32_t idx, time_t modTime);
@@ -586,7 +586,7 @@ private:
                                       uint32_t pathPoolSize);
 
     /// Build recent cache from standalone data (no member access, used by COW compaction)
-    static std::set<RecentEntry>
+    static BoundedSortedVec<RecentEntry>
         buildRecentCacheFromData(const std::vector<uint8_t>& types,
                                  const std::vector<int64_t>& modTimes,
                                  uint32_t cacheSize);

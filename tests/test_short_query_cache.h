@@ -28,19 +28,15 @@ static void runShortQueryCacheTests() {
         auto* entryA = cache.lookup("a");
         check(entryA != nullptr, "ShortQueryCache: lookup 'a' returns non-null");
         check(entryA->totalMatches > 0, "ShortQueryCache: 'a' has matches");
-
-        // "alpha.txt" and "abc.txt" and "ab_file.log" and "delta" all contain 'a'
         check(entryA->totalMatches >= 3, "ShortQueryCache: 'a' has >= 3 matches");
 
         auto* entryAb = cache.lookup("ab");
         check(entryAb != nullptr, "ShortQueryCache: lookup 'ab' returns non-null");
-        check(entryAb->totalMatches >= 2, "ShortQueryCache: 'ab' has >= 2 matches (abc.txt, ab_file.log)");
+        check(entryAb->totalMatches >= 2, "ShortQueryCache: 'ab' has >= 2 matches");
 
-        // Non-cache key (3+ chars) returns null
         auto* entry3 = cache.lookup("abc");
         check(entry3 == nullptr, "ShortQueryCache: 3-char key returns null");
 
-        // Non-lowercase returns null
         auto* entryUpper = cache.lookup("A");
         check(entryUpper == nullptr, "ShortQueryCache: uppercase key returns null");
     }
@@ -50,9 +46,9 @@ static void runShortQueryCacheTests() {
     {
         SearchEngine engine;
         std::vector<FileRecord> records;
-        records.push_back({"x", "/deep/nested/path/here", 1, 100, 1000});  // exact match, long path
-        records.push_back({"x.txt", "/tmp", 1, 200, 2000});               // prefix match, short path
-        records.push_back({"fox", "/bin", 1, 50, 3000});                   // substring match
+        records.push_back({"x", "/deep/nested/path/here", 1, 100, 1000});
+        records.push_back({"x.txt", "/tmp", 1, 200, 2000});
+        records.push_back({"fox", "/bin", 1, 50, 3000});
         engine.loadRecords(std::move(records));
         engine.buildShortQueryCache();
 
@@ -60,17 +56,16 @@ static void runShortQueryCacheTests() {
         check(entry != nullptr, "ShortQueryCache: lookup 'x' non-null");
         check(entry->results.size() == 3, "ShortQueryCache: 'x' has 3 results");
 
-        // "x" should be first (exact match), "x.txt" second (prefix), "fox" third (substring)
-        check(engine.getRecord(entry->results[0]).name == "x",
+        check(engine.getRecord(entry->results[0].idx).name == "x",
               "ShortQueryCache: exact 'x' is first");
-        check(engine.getRecord(entry->results[1]).name == "x.txt",
+        check(engine.getRecord(entry->results[1].idx).name == "x.txt",
               "ShortQueryCache: prefix 'x.txt' is second");
-        check(engine.getRecord(entry->results[2]).name == "fox",
+        check(engine.getRecord(entry->results[2].idx).name == "fox",
               "ShortQueryCache: substring 'fox' is third");
     }
 
-    // ── Test 3: markDeleted and needsRebuild ──
-    std::cout << "\n  --- Invalidation ---\n";
+    // ── Test 3: eraseRecord removes from results ──
+    std::cout << "\n  --- eraseRecord ---\n";
     {
         SearchEngine engine;
         std::vector<FileRecord> records;
@@ -84,18 +79,12 @@ static void runShortQueryCacheTests() {
         auto* entry = cache.lookup("q");
         check(entry != nullptr, "ShortQueryCache: 'q' entry exists");
         check(entry->results.size() == 10, "ShortQueryCache: 'q' has 10 results");
-        check(entry->deletedCount == 0, "ShortQueryCache: initial deletedCount=0");
-        check(!cache.needsRebuild(), "ShortQueryCache: no rebuild needed initially");
 
-        // Delete 6 records (>50% of 10)
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 3; i++) {
             std::string name = "q" + std::to_string(i) + ".dat";
-            std::string lowerName = name; // already lowercase
-            cache.markDeleted(i, lowerName.c_str(), static_cast<uint16_t>(lowerName.size()));
+            cache.eraseRecord(i, name.c_str(), static_cast<uint16_t>(name.size()));
         }
-
-        check(entry->deletedCount == 6, "ShortQueryCache: deletedCount=6 after marking");
-        check(cache.needsRebuild(), "ShortQueryCache: rebuild needed after >50% deleted");
+        check(entry->results.size() == 7, "ShortQueryCache: 'q' has 7 results after erase");
     }
 
     // ── Test 4: Persistence round-trip ──
@@ -109,7 +98,7 @@ static void runShortQueryCacheTests() {
         engine.loadRecords(std::move(records));
         engine.buildShortQueryCache();
 
-        std::string tmpPath = "/tmp/test_sqcache.bin";
+        std::string tmpPath = "/tmp/test_sqcache_v2.bin";
         engine.getShortQueryCache().saveTo(tmpPath);
 
         ShortQueryCache loaded;
@@ -128,7 +117,7 @@ static void runShortQueryCacheTests() {
         std::remove(tmpPath.c_str());
     }
 
-    // ── Test 5: Query integration — cache is used for short queries ──
+    // ── Test 5: Query integration ──
     std::cout << "\n  --- Query integration ---\n";
     {
         SearchEngine engine;
@@ -144,8 +133,67 @@ static void runShortQueryCacheTests() {
         check(!results.empty(), "ShortQueryCache: query 'a' returns results");
         check(timing.searchPath == "short-query-cache",
               "ShortQueryCache: searchPath is 'short-query-cache'");
-        check(timing.totalMs < 5.0,
-              "ShortQueryCache: query time < 5ms");
+        check(timing.totalMs < 5.0, "ShortQueryCache: query time < 5ms");
+    }
+
+    // ── Test 6: tryInsert via addRecord ──
+    std::cout << "\n  --- tryInsert via addRecord ---\n";
+    {
+        SearchEngine engine;
+        std::vector<FileRecord> records;
+        records.push_back({"zz.txt", "/tmp", 1, 100, 1000});
+        engine.loadRecords(std::move(records));
+        engine.buildShortQueryCache();
+
+        auto* entry = engine.getShortQueryCache().lookup("z");
+        check(entry != nullptr, "ShortQueryCache: 'z' entry exists");
+        size_t beforeCount = entry->results.size();
+
+        engine.addRecord({"zoo.dat", "/usr", 1, 200, 2000});
+
+        check(entry->results.size() == beforeCount + 1,
+              "ShortQueryCache: addRecord inserts into cache");
+    }
+
+    // ── Test 7: tombstone removes from cache ──
+    std::cout << "\n  --- tombstone removes from cache ---\n";
+    {
+        SearchEngine engine;
+        std::vector<FileRecord> records;
+        records.push_back({"m.txt", "/tmp", 1, 100, 1000});
+        records.push_back({"mm.dat", "/usr", 1, 200, 2000});
+        engine.loadRecords(std::move(records));
+        engine.buildShortQueryCache();
+
+        auto* entry = engine.getShortQueryCache().lookup("m");
+        check(entry != nullptr, "ShortQueryCache: 'm' entry exists");
+        check(entry->results.size() == 2, "ShortQueryCache: 'm' has 2 results");
+
+        engine.removeByPath("/tmp/m.txt");
+        check(entry->results.size() == 1, "ShortQueryCache: 'm' has 1 after delete");
+    }
+
+    // ── Test 8: BoundedSortedVec eviction ──
+    std::cout << "\n  --- BoundedSortedVec eviction ---\n";
+    {
+        BoundedSortedVec<int> vec(3);
+        vec.insert(5);
+        vec.insert(3);
+        vec.insert(1);
+        check(vec.size() == 3, "BoundedSortedVec: size=3 after 3 inserts");
+        check(vec[0] == 1, "BoundedSortedVec: sorted [0]=1");
+
+        bool inserted = vec.insert(2);
+        check(inserted, "BoundedSortedVec: insert(2) succeeds");
+        check(vec.size() == 3, "BoundedSortedVec: still size=3");
+        check(vec.back() == 3, "BoundedSortedVec: worst is now 3 (5 evicted)");
+
+        inserted = vec.insert(10);
+        check(!inserted, "BoundedSortedVec: insert(10) rejected when full");
+
+        bool erased = vec.erase(2);
+        check(erased, "BoundedSortedVec: erase(2) succeeds");
+        check(vec.size() == 2, "BoundedSortedVec: size=2 after erase");
     }
 
     std::cout << "\n";

@@ -252,9 +252,9 @@ std::vector<uint32_t> SearchEngine::query(const std::string& keyword, uint32_t m
             std::vector<uint32_t> result;
             result.reserve(std::min<size_t>(entry->results.size(),
                                             maxResults > 0 ? maxResults : entry->results.size()));
-            for (uint32_t idx : entry->results) {
-                if (types_[idx] == 0) continue;
-                result.push_back(idx);
+            for (const auto& sr : entry->results) {
+                if (types_[sr.idx] == 0) continue;
+                result.push_back(sr.idx);
                 if (maxResults > 0 && result.size() >= maxResults) break;
             }
             auto end = std::chrono::steady_clock::now();

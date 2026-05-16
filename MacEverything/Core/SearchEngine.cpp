@@ -38,7 +38,7 @@ void SearchEngine::tombstoneAt(uint32_t idx) {
     if (shortQueryCache_.isBuilt()) {
         const char* name = namePool_.data(idx);
         uint16_t nameLen = namePool_.length(idx);
-        if (nameLen > 0) shortQueryCache_.markDeleted(idx, name, nameLen);
+        if (nameLen > 0) shortQueryCache_.eraseRecord(idx, name, nameLen);
     }
     types_[idx] = 0;
     markPageDirty(idx);
@@ -369,6 +369,14 @@ uint32_t SearchEngine::addRecord(FileRecord&& record) {
     liveCount_.fetch_add(1, std::memory_order_relaxed);
     addToRecentCache(idx, static_cast<time_t>(modTimes_[idx]));
 
+    if (shortQueryCache_.isBuilt()) {
+        const char* nd = namePool_.data(idx);
+        uint16_t nl = namePool_.length(idx);
+        uint32_t pi = pathIndices_.back();
+        uint16_t pl = lowerPathPool_.length(pi);
+        shortQueryCache_.tryInsert(idx, nd, nl, static_cast<uint32_t>(pl) + 1 + nl);
+    }
+
     return idx;
 }
 
@@ -498,8 +506,9 @@ uint32_t SearchEngine::batchRescanPrefix(const std::string& pathPrefix,
         liveCount_.fetch_add(1, std::memory_order_relaxed);
     }
 
-    // ── Phase 3: Rebuild recent cache ──
+    // ── Phase 3: Rebuild caches ──
     rebuildRecentCache();
+    buildShortQueryCache();
 
     return removed;
 }
@@ -810,25 +819,14 @@ std::vector<uint32_t> SearchEngine::recentIndices(uint32_t count) const {
     return result;
 }
 
-std::set<SearchEngine::RecentEntry>
+BoundedSortedVec<SearchEngine::RecentEntry>
 SearchEngine::buildRecentCacheFromData(const std::vector<uint8_t>& types,
                                        const std::vector<int64_t>& modTimes,
                                        uint32_t cacheSize) {
-    struct TimePair { time_t modTime; uint32_t index; };
-    std::vector<TimePair> pairs;
-    pairs.reserve(types.size());
+    BoundedSortedVec<RecentEntry> cache(cacheSize);
     for (size_t i = 0; i < types.size(); i++) {
         if (types[i] == 0) continue;
-        pairs.push_back({static_cast<time_t>(modTimes[i]), static_cast<uint32_t>(i)});
-    }
-    std::set<RecentEntry> cache;
-    size_t k = std::min(pairs.size(), static_cast<size_t>(cacheSize));
-    if (k > 0) {
-        std::partial_sort(pairs.begin(), pairs.begin() + k, pairs.end(),
-                          [](const TimePair& a, const TimePair& b) { return a.modTime > b.modTime; });
-        for (size_t i = 0; i < k; i++) {
-            cache.insert({pairs[i].modTime, pairs[i].index});
-        }
+        cache.insert({static_cast<time_t>(modTimes[i]), static_cast<uint32_t>(i)});
     }
     return cache;
 }
@@ -839,9 +837,6 @@ void SearchEngine::rebuildRecentCache() {
 
 void SearchEngine::addToRecentCache(uint32_t idx, time_t modTime) {
     recentCache_.insert({modTime, idx});
-    if (recentCache_.size() > kRecentCacheSize) {
-        recentCache_.erase(std::prev(recentCache_.end()));
-    }
 }
 
 void SearchEngine::removeFromRecentCache(uint32_t idx, time_t modTime) {
