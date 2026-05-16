@@ -1,0 +1,14 @@
+# NL Translation Test Cases
+# Format: <natural_language_query>\t<expected_translated_query>
+# Matching: token-set comparison (order-independent)
+# Lines starting with # are comments, empty lines are skipped
+#
+# From few-shot examples (with filters)
+最近下载的PDF	path:Downloads ext:pdf dm:last7days
+上个月修改的Word文档	ext:doc;docx dm:lastmonth
+除了node_modules以外的JS文件	ext:js nopath:node_modules
+大于100MB的视频文件	video: size:>100mb
+桌面上的截图	path:Desktop pic:
+今天创建的Python脚本	ext:py dc:today
+recent large PDF files	ext:pdf size:>10mb dm:last7days
+3天内修改的Markdown笔记	ext:md dm:last3days
