@@ -63,6 +63,7 @@ public:
     void rebuildContentIndex();
     void compactIndex();
     void startSemanticIndexing();
+    void loadCachedEmbeddings();
     void rebuildSemanticIndex();
     void updateSemanticForPath(const std::string& path, bool isRemove, std::shared_ptr<SearchEngine> engine);
 

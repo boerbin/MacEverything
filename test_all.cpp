@@ -126,6 +126,7 @@ namespace fs = std::filesystem;
 #include "tests/test_batch_split.h"
 #include "tests/test_litellm_client.h"
 #include "tests/test_embedding_index.h"
+#include "tests/test_embedding_cache_load.h"
 #include "tests/test_vector_search.h"
 #include "tests/test_nl_translator.h"
 #include "tests/test_semantic_perf.h"
@@ -199,6 +200,7 @@ static void printUsage(const char* prog) {
     std::cout << "  77 (batch split),\n";
     std::cout << "  78 (LiteLLM client),\n";
     std::cout << "  79 (embedding index),\n";
+    std::cout << "  79b (embedding cache load),\n";
     std::cout << "  80 (vector search),\n";
     std::cout << "  81 (NL translator),\n";
     std::cout << "  82 (semantic perf bench),\n";
@@ -353,6 +355,7 @@ int main(int argc, char* argv[]) {
     if (selectedParts.count("77")) runBatchSplitTests();
     if (selectedParts.count("78")) runLiteLLMClientTests();
     if (selectedParts.count("79")) runEmbeddingIndexTests();
+    if (selectedParts.count("79b")) runEmbeddingCacheLoadTests();
     if (selectedParts.count("80")) runVectorSearchTests();
     if (selectedParts.count("81")) runNLTranslatorTests();
     if (selectedParts.count("82")) runSemanticPerfTests();

@@ -32,6 +32,32 @@ std::shared_ptr<NLTranslator> ServiceEngine::safeNLTranslator() {
 }
 
 // ═══════════════════════════════════════════════════════
+//  Load cached embeddings from SQLite into VectorSearch
+// ═══════════════════════════════════════════════════════
+
+void ServiceEngine::loadCachedEmbeddings() {
+    auto embIdx = safeEmbeddingIndex();
+    auto vecSearch = safeVectorSearch();
+    auto engine = safeEngine();
+    if (!embIdx || !vecSearch || !engine) return;
+
+    auto allEmbeddings = embIdx->getAllEmbeddings();
+    if (allEmbeddings.empty()) return;
+
+    uint32_t loaded = 0;
+    for (auto& [filePath, vec] : allEmbeddings) {
+        if (vec.empty()) continue;
+        uint32_t fileIndex = engine->indexForPath(filePath);
+        if (fileIndex != UINT32_MAX) {
+            vecSearch->addVector(fileIndex, vec);
+            loaded++;
+        }
+    }
+
+    LOG_INFO("ServiceEngine", "Loaded " << loaded << " cached embeddings into VectorSearch");
+}
+
+// ═══════════════════════════════════════════════════════
 //  Full semantic indexing (background, sequential API calls)
 // ═══════════════════════════════════════════════════════
 
@@ -251,5 +277,6 @@ void ServiceEngine::rebuildSemanticIndex() {
     std::string dbPath = config_.cachePath + "/semantic_index.db";
     embIdx->open(dbPath);
 
+    loadCachedEmbeddings();
     startSemanticIndexing();
 }

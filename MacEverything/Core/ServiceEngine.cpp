@@ -165,6 +165,7 @@ void ServiceEngine::startFullScan(StartupCallback completion) {
                 fs::create_directories(this->config_.cachePath);
                 embIdx->open(dbPath);
             }
+            this->loadCachedEmbeddings();
             this->startSemanticIndexing();
           } catch (const std::exception& e) {
             LOG_ERROR("ServiceEngine", "Content/semantic setup failed: " << e.what());
@@ -377,6 +378,7 @@ void ServiceEngine::backgroundSyncEngine(
                     fs::create_directories(this->config_.cachePath);
                     embIdx->open(dbPath);
                 }
+                this->loadCachedEmbeddings();
                 this->startSemanticIndexing();
             });
             if (this->onIndexChanged) this->onIndexChanged();
@@ -456,6 +458,7 @@ void ServiceEngine::backgroundSyncEngine(
                 fs::create_directories(this->config_.cachePath);
                 embIdx->open(dbPath);
             }
+            this->loadCachedEmbeddings();
             this->startSemanticIndexing();
           } catch (const std::exception& e) {
             LOG_ERROR("ServiceEngine", "Content/semantic setup failed: " << e.what());
