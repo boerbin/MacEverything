@@ -12,7 +12,7 @@ class SearchEngine;
 class ContentIndex;
 class EmbeddingIndex;
 class VectorSearch;
-class LiteLLMClient;
+class LiteLLMBackend;
 class NLTranslator;
 
 class HttpServer {
@@ -36,7 +36,7 @@ public:
     using ContentIndexGetter = std::function<std::shared_ptr<ContentIndex>()>;
     using EmbeddingIndexGetter = std::function<std::shared_ptr<EmbeddingIndex>()>;
     using VectorSearchGetter = std::function<std::shared_ptr<VectorSearch>()>;
-    using LiteLLMClientGetter = std::function<std::shared_ptr<LiteLLMClient>()>;
+    using LiteLLMBackendGetter = std::function<std::shared_ptr<LiteLLMBackend>()>;
     using NLTranslatorGetter = std::function<std::shared_ptr<NLTranslator>()>;
 
     bool start(uint16_t port,
@@ -48,7 +48,7 @@ public:
 
     void setAdminCallbacks(AdminCallbacks callbacks);
     void setSemanticGetters(EmbeddingIndexGetter eig, VectorSearchGetter vsg,
-                            LiteLLMClientGetter lcg, NLTranslatorGetter ntg);
+                            LiteLLMBackendGetter lcg, NLTranslatorGetter ntg);
 
 private:
     void acceptLoop();
@@ -90,7 +90,7 @@ private:
     ContentIndexGetter getContentIndex_;
     EmbeddingIndexGetter getEmbeddingIndex_;
     VectorSearchGetter getVectorSearch_;
-    LiteLLMClientGetter getLiteLLMClient_;
+    LiteLLMBackendGetter getLiteLLMBackend_;
     NLTranslatorGetter getNLTranslator_;
     AdminCallbacks adminCallbacks_;
     std::atomic<bool> running_{false};

@@ -9,7 +9,7 @@
 #include "RescanDebounce.h"
 #include "EmbeddingIndex.h"
 #include "VectorSearch.h"
-#include "LiteLLMClient.h"
+#include "LiteLLMBackend.h"
 #include "NLTranslator.h"
 #include <memory>
 #include <atomic>
@@ -73,7 +73,7 @@ public:
     std::shared_ptr<ContentIndexPersistence> safeContentPersistence();
     std::shared_ptr<EmbeddingIndex> safeEmbeddingIndex();
     std::shared_ptr<VectorSearch> safeVectorSearch();
-    std::shared_ptr<LiteLLMClient> safeLiteLLMClient();
+    std::shared_ptr<LiteLLMBackend> safeLiteLLMClient();
     std::shared_ptr<NLTranslator> safeNLTranslator();
 
     // ── State queries ──
@@ -137,7 +137,7 @@ private:
     std::shared_ptr<ContentIndex> contentIndex_;
     std::shared_ptr<EmbeddingIndex> embeddingIndex_;
     std::shared_ptr<VectorSearch> vectorSearch_;
-    std::shared_ptr<LiteLLMClient> litellmClient_;
+    std::shared_ptr<LiteLLMBackend> litellmClient_;
     std::shared_ptr<NLTranslator> nlTranslator_;
     std::shared_ptr<IndexPersistence> persistence_;
     std::shared_ptr<ContentIndexPersistence> contentPersistence_;

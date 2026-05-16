@@ -19,7 +19,7 @@ ServiceEngine::ServiceEngine(const ServiceConfig& config)
     contentIndex_ = std::make_shared<ContentIndex>();
     embeddingIndex_ = std::make_shared<EmbeddingIndex>();
     vectorSearch_ = std::make_shared<VectorSearch>(1024);  // bge-m3 is 1024-dim
-    litellmClient_ = std::make_shared<LiteLLMClient>();
+    litellmClient_ = std::make_shared<LiteLLMBackend>();
     nlTranslator_ = std::make_shared<NLTranslator>(litellmClient_);
     mutationQueue_ = dispatch_queue_create("com.maceverything.mutation", DISPATCH_QUEUE_SERIAL);
     backgroundGroup_ = dispatch_group_create();

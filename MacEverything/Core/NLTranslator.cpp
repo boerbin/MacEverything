@@ -1,5 +1,5 @@
 #include "NLTranslator.h"
-#include "LiteLLMClient.h"
+#include "LiteLLMBackend.h"
 #include <algorithm>
 #include <cctype>
 #include <regex>
@@ -36,7 +36,7 @@ static std::string trim(const std::string& s) {
 
 // ── Constructor ──
 
-NLTranslator::NLTranslator(std::shared_ptr<LiteLLMClient> client)
+NLTranslator::NLTranslator(std::shared_ptr<LiteLLMBackend> client)
     : client_(std::move(client)) {}
 
 // ── looksLikeQuerySyntax ──
@@ -226,7 +226,7 @@ TranslationResult NLTranslator::translate(const std::string& query) {
 
     try {
         auto messages = buildMessages(trimmed);
-        std::string rawResponse = client_->chat("translate", messages);
+        std::string rawResponse = client_->chat(messages);
         std::string translated = cleanLLMResponse(rawResponse);
 
         if (translated.empty()) {

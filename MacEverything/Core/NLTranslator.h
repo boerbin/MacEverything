@@ -4,7 +4,7 @@
 #include <utility>
 #include <memory>
 
-class LiteLLMClient;
+class LiteLLMBackend;
 
 struct TranslationResult {
     std::string originalQuery;
@@ -16,7 +16,7 @@ struct TranslationResult {
 
 class NLTranslator {
 public:
-    explicit NLTranslator(std::shared_ptr<LiteLLMClient> client);
+    explicit NLTranslator(std::shared_ptr<LiteLLMBackend> client);
 
     TranslationResult translate(const std::string& query);
 
@@ -28,5 +28,5 @@ public:
     static std::vector<std::pair<std::string, std::string>> buildMessages(const std::string& userQuery);
 
 private:
-    std::shared_ptr<LiteLLMClient> client_;
+    std::shared_ptr<LiteLLMBackend> client_;
 };

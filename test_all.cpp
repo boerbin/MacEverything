@@ -124,7 +124,7 @@ namespace fs = std::filesystem;
 #include "tests/test_re2_integration.h"
 #include "tests/test_fsevents_search_latency.h"
 #include "tests/test_batch_split.h"
-#include "tests/test_litellm_client.h"
+#include "tests/test_litellm_backend.h"
 #include "tests/test_embedding_index.h"
 #include "tests/test_vector_search.h"
 #include "tests/test_nl_translator.h"
@@ -351,7 +351,7 @@ int main(int argc, char* argv[]) {
     if (selectedParts.count("75")) runRE2IntegrationTests();
     if (selectedParts.count("76")) runFSEventsSearchLatencyTest();
     if (selectedParts.count("77")) runBatchSplitTests();
-    if (selectedParts.count("78")) runLiteLLMClientTests();
+    if (selectedParts.count("78")) runLiteLLMBackendTests();
     if (selectedParts.count("79")) runEmbeddingIndexTests();
     if (selectedParts.count("80")) runVectorSearchTests();
     if (selectedParts.count("81")) runNLTranslatorTests();

@@ -3,7 +3,7 @@
 #include "ContentIndex.h"
 #include "EmbeddingIndex.h"
 #include "VectorSearch.h"
-#include "LiteLLMClient.h"
+#include "LiteLLMBackend.h"
 #include "NLTranslator.h"
 #include "Logger.h"
 #include <sys/socket.h>
@@ -175,10 +175,10 @@ void HttpServer::setAdminCallbacks(AdminCallbacks callbacks) {
 }
 
 void HttpServer::setSemanticGetters(EmbeddingIndexGetter eig, VectorSearchGetter vsg,
-                                    LiteLLMClientGetter lcg, NLTranslatorGetter ntg) {
+                                    LiteLLMBackendGetter lcg, NLTranslatorGetter ntg) {
     getEmbeddingIndex_ = std::move(eig);
     getVectorSearch_ = std::move(vsg);
-    getLiteLLMClient_ = std::move(lcg);
+    getLiteLLMBackend_ = std::move(lcg);
     getNLTranslator_ = std::move(ntg);
 }
 
@@ -664,8 +664,8 @@ std::string HttpServer::handleSemanticSearch(
         if (endptr != lIt->second.c_str() && v > 0) limit = static_cast<int>(std::min(v, 1000L));
     }
 
-    if (!getLiteLLMClient_) return errorResponse(503, "Semantic search not configured");
-    auto client = getLiteLLMClient_();
+    if (!getLiteLLMBackend_) return errorResponse(503, "Semantic search not configured");
+    auto client = getLiteLLMBackend_();
     if (!client) return errorResponse(503, "LiteLLM client not available");
 
     if (!getVectorSearch_) return errorResponse(503, "Semantic search not configured");
@@ -860,8 +860,8 @@ std::string HttpServer::handleAIStatus() {
     bool litellmAvailable = false;
     uint32_t indexedCount = 0;
 
-    if (getLiteLLMClient_) {
-        auto client = getLiteLLMClient_();
+    if (getLiteLLMBackend_) {
+        auto client = getLiteLLMBackend_();
         if (client) {
             try {
                 litellmAvailable = client->isAvailable();

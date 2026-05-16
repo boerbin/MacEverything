@@ -21,7 +21,7 @@ std::shared_ptr<VectorSearch> ServiceEngine::safeVectorSearch() {
     return vectorSearch_;
 }
 
-std::shared_ptr<LiteLLMClient> ServiceEngine::safeLiteLLMClient() {
+std::shared_ptr<LiteLLMBackend> ServiceEngine::safeLiteLLMClient() {
     std::shared_lock lock(semanticMutex_);
     return litellmClient_;
 }
