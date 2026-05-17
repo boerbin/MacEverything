@@ -252,6 +252,7 @@ bool NLTranslator::loadPromptFromFile(const std::string& path) {
     std::lock_guard<std::mutex> lock(promptMutex_);
     std::ifstream file(path);
     if (!file.is_open()) {
+        LOG_INFO("AI", "prompt file not found: " << path << ", using builtin");
         resetToDefaults();
         return false;
     }
@@ -259,11 +260,15 @@ bool NLTranslator::loadPromptFromFile(const std::string& path) {
     ss << file.rdbuf();
     std::string content = ss.str();
     if (content.empty() || !parsePromptFile(content)) {
+        LOG_ERROR("AI", "prompt file parse failed: " << path << " (" << content.size() << " bytes), using builtin");
         resetToDefaults();
         return false;
     }
     usingFilePrompt_ = true;
     promptFilePath_ = path;
+    LOG_INFO("AI", "prompt loaded from file: " << path
+             << " | system_prompt=" << systemPrompt_.size() << " chars"
+             << ", few_shot=" << fewShotExamples_.size() << " examples");
     return true;
 }
 
@@ -368,7 +373,8 @@ TranslationResult NLTranslator::translate(const std::string& query) {
         result.success = true;
 
         LOG_INFO("AI", "translate: \"" << trimmed << "\" -> \"" << translated
-                 << "\" | build=" << std::fixed << std::setprecision(1) << msgMs
+                 << "\" | prompt=" << (usingFilePrompt_ ? promptFilePath_ : "builtin")
+                 << " build=" << std::fixed << std::setprecision(1) << msgMs
                  << "ms infer=" << inferMs << "ms clean=" << cleanMs
                  << "ms total=" << totalMs << "ms");
     } catch (const std::exception& e) {
