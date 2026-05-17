@@ -1,5 +1,6 @@
 #include "LlamaBackend.h"
 #include "llama.h"
+#include "Logger.h"
 #include <filesystem>
 #include <iostream>
 #include <cstring>
@@ -144,6 +145,16 @@ std::string LlamaBackend::chat(
         }
     }
     tokens.resize(static_cast<size_t>(nTokens));
+
+    LOG_INFO("LlamaBackend", "chat: nTokens=" << nTokens
+             << " n_ctx=" << llama_n_ctx(ctx_)
+             << " n_batch=" << llama_n_batch(ctx_));
+
+    uint32_t n_ctx = llama_n_ctx(ctx_);
+    if (static_cast<uint32_t>(nTokens) > n_ctx) {
+        LOG_ERROR("LlamaBackend", "chat: prompt too long! nTokens=" << nTokens << " > n_ctx=" << n_ctx);
+        return "";
+    }
 
     // 4. Clear KV cache
     llama_memory_t mem = llama_get_memory(ctx_);
