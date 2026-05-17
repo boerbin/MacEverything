@@ -1,9 +1,14 @@
 #include "LlamaBackend.h"
 #include "llama.h"
 #include "Logger.h"
+#include "ggml.h"
 #include <filesystem>
 #include <iostream>
 #include <cstring>
+
+static void llamaAbortHandler(const char* message) {
+    LOG_ERROR("LlamaBackend", "GGML ABORT: " << message);
+}
 
 // ── Lifecycle ──
 
@@ -24,6 +29,7 @@ bool LlamaBackend::loadModel(const std::string& ggufPath) {
     }
 
     llama_backend_init();
+    ggml_set_abort_callback(llamaAbortHandler);
 
     // Model params — offload all layers to Metal GPU
     auto mparams = llama_model_default_params();
