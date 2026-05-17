@@ -350,6 +350,9 @@ TranslationResult NLTranslator::translate(const std::string& query) {
         auto messages = buildMessages(trimmed);
         auto msgMs = std::chrono::duration<double, std::milli>(Clock::now() - msgStart).count();
 
+        LOG_INFO("AI", "translate begin: \"" << trimmed << "\" | tokens=" << messages.size()
+                 << " prompt=" << (usingFilePrompt_ ? promptFilePath_ : "builtin"));
+
         auto inferStart = Clock::now();
         std::string rawResponse = backend_->chat(messages);
         auto inferMs = std::chrono::duration<double, std::milli>(Clock::now() - inferStart).count();
