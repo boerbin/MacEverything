@@ -671,9 +671,23 @@ std::string HttpServer::handleAITranslate(const std::string& body) {
         return errorResponse(400, "Empty query");
     }
 
+    // Parse optional "temperature" field
+    float temperature = 0.0f;
+    auto tempPos = body.find("\"temperature\"");
+    if (tempPos != std::string::npos) {
+        auto tColonPos = body.find(':', tempPos + 13);
+        if (tColonPos != std::string::npos) {
+            char* end = nullptr;
+            float val = std::strtof(body.c_str() + tColonPos + 1, &end);
+            if (end != body.c_str() + tColonPos + 1) {
+                temperature = std::max(0.0f, std::min(2.0f, val));
+            }
+        }
+    }
+
     TranslationResult result;
     try {
-        result = translator->translate(query);
+        result = translator->translate(query, temperature);
     } catch (const std::exception& e) {
         std::ostringstream json;
         json << "{\"original_query\":\"" << jsonEscapeString(query) << "\""

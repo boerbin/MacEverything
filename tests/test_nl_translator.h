@@ -142,5 +142,24 @@ inline void runNLTranslatorTests() {
         std::cout << "  [PASS] setPromptFile empty resets to builtin" << std::endl;
     }
 
+    // Test 14: translate with explicit temperature — syntax passthrough
+    {
+        NLTranslator translator(nullptr);
+        auto result = translator.translate("ext:pdf size:>1mb", 0.5f);
+        assert(result.success);
+        assert(result.alreadySyntax);
+        assert(result.translatedQuery == "ext:pdf size:>1mb");
+        std::cout << "  [PASS] translate with temperature — syntax passthrough" << std::endl;
+    }
+
+    // Test 15: translate empty query with temperature
+    {
+        NLTranslator translator(nullptr);
+        auto result = translator.translate("", 0.0f);
+        assert(!result.success);
+        assert(result.error.find("Empty") != std::string::npos);
+        std::cout << "  [PASS] translate empty query with temperature" << std::endl;
+    }
+
     std::cout << "=== NLTranslator Tests: ALL PASSED ===" << std::endl;
 }
