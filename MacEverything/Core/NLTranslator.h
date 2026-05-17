@@ -19,7 +19,7 @@ class NLTranslator {
 public:
     explicit NLTranslator(std::shared_ptr<IModelBackend> backend);
 
-    TranslationResult translate(const std::string& query);
+    TranslationResult translate(const std::string& query, float temperature = 0.0f);
 
     // Prompt management
     bool loadPromptFromFile(const std::string& path);

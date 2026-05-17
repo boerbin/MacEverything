@@ -309,12 +309,15 @@ std::vector<std::pair<std::string, std::string>> NLTranslator::buildMessages(con
 
 // ── translate ──
 
-TranslationResult NLTranslator::translate(const std::string& query) {
+TranslationResult NLTranslator::translate(const std::string& query, float temperature) {
     TranslationResult result;
     result.originalQuery = query;
 
     // Trim input
     std::string trimmed = trim(query);
+
+    // Clamp temperature to [0.0, 2.0]
+    temperature = std::max(0.0f, std::min(2.0f, temperature));
 
     // Empty query
     if (trimmed.empty()) {
@@ -351,10 +354,11 @@ TranslationResult NLTranslator::translate(const std::string& query) {
         auto msgMs = std::chrono::duration<double, std::milli>(Clock::now() - msgStart).count();
 
         LOG_INFO("AI", "translate begin: \"" << trimmed << "\" | tokens=" << messages.size()
-                 << " prompt=" << (usingFilePrompt_ ? promptFilePath_ : "builtin"));
+                 << " prompt=" << (usingFilePrompt_ ? promptFilePath_ : "builtin")
+                 << " temp=" << std::fixed << std::setprecision(1) << temperature);
 
         auto inferStart = Clock::now();
-        std::string rawResponse = backend_->chat(messages);
+        std::string rawResponse = backend_->chat(messages, temperature);
         auto inferMs = std::chrono::duration<double, std::milli>(Clock::now() - inferStart).count();
 
         auto cleanStart = Clock::now();
@@ -377,8 +381,8 @@ TranslationResult NLTranslator::translate(const std::string& query) {
 
         LOG_INFO("AI", "translate: \"" << trimmed << "\" -> \"" << translated
                  << "\" | prompt=" << (usingFilePrompt_ ? promptFilePath_ : "builtin")
-                 << " build=" << std::fixed << std::setprecision(1) << msgMs
-                 << "ms infer=" << inferMs << "ms clean=" << cleanMs
+                 << " temp=" << std::fixed << std::setprecision(1) << temperature
+                 << " build=" << msgMs << "ms infer=" << inferMs << "ms clean=" << cleanMs
                  << "ms total=" << totalMs << "ms");
     } catch (const std::exception& e) {
         result.translatedQuery = trimmed;
