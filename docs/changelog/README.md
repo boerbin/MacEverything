@@ -155,6 +155,7 @@
 | [167](167-ai-logging-prompt-file-focus-fix.md) | feature | AI 翻译日志/耗时 + Prompt 外部加载 + 幻觉修复 + 焦点修复 | 2026-05-16 |
 | [168](168-llama-token-logging.md) | feature | LlamaBackend token count 日志 + n_ctx 溢出保护 | 2026-05-17 |
 | [169](169-eval-ai-translation-script.md) | feature | 共享 AI 翻译评估 Python 脚本，C++ test 和 autoloop 统一调用 | 2026-05-18 |
+| [170](170-fix-short-query-cache-compaction.md) | bugfix | 修复 COW 压缩后 ShortQueryCache 索引失效导致单字符搜索结果错误 | 2026-05-18 |
 
 ## 统计
 
