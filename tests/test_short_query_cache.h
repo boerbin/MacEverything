@@ -173,7 +173,53 @@ static void runShortQueryCacheTests() {
         check(entry->results.size() == 1, "ShortQueryCache: 'm' has 1 after delete");
     }
 
-    // ── Test 8: BoundedSortedVec eviction ──
+    // ── Test 8: compactRecords rebuilds cache with correct indices ──
+    std::cout << "\n  --- compactRecords rebuilds cache ---\n";
+    {
+        SearchEngine engine;
+        std::vector<FileRecord> records;
+        records.push_back({"apple.txt", "/tmp", 1, 100, 1000});   // idx 0, has 'a'
+        records.push_back({"berry.txt", "/tmp", 1, 200, 2000});   // idx 1, no 'a'
+        records.push_back({"avocado", "/usr", 1, 50, 3000});      // idx 2, has 'a'
+        records.push_back({"cherry", "/bin", 1, 300, 4000});      // idx 3, no 'a'
+        records.push_back({"date.log", "/var", 1, 150, 5000});    // idx 4, has 'a'
+        engine.loadRecords(std::move(records));
+        engine.buildShortQueryCache();
+
+        // Verify initial state: 'a' cache has entries for apple, avocado, date
+        auto* entryA = engine.getShortQueryCache().lookup("a");
+        check(entryA != nullptr, "ShortQueryCache-compact: 'a' entry exists");
+        check(entryA->totalMatches == 3, "ShortQueryCache-compact: 'a' has 3 matches initially");
+
+        // Remove some records to create tombstones, then compact
+        engine.removeByPath("/tmp/berry.txt");
+        engine.removeByPath("/bin/cherry");
+
+        auto remap = engine.compactRecords();
+        check(!remap.empty(), "ShortQueryCache-compact: compaction produced remap");
+
+        // After compaction, query 'a' via the engine
+        QueryTimingInfo timing{};
+        auto results = engine.query("a", 100, true, timing);
+        check(timing.searchPath == "short-query-cache",
+              "ShortQueryCache-compact: uses cache after compaction");
+
+        // All results must have 'a' in their filename
+        bool allHaveA = true;
+        for (uint32_t idx : results) {
+            auto rec = engine.getRecord(idx);
+            std::string lower = rec.name;
+            for (auto& c : lower) c = std::tolower(c);
+            if (lower.find('a') == std::string::npos) {
+                allHaveA = false;
+                std::cout << "    FAIL: result '" << rec.name << "' has no 'a'\n";
+            }
+        }
+        check(allHaveA, "ShortQueryCache-compact: all results contain 'a' in name");
+        check(results.size() == 3, "ShortQueryCache-compact: returns 3 results after compaction");
+    }
+
+    // ── Test 9: BoundedSortedVec eviction ──
     std::cout << "\n  --- BoundedSortedVec eviction ---\n";
     {
         BoundedSortedVec<int> vec(3);

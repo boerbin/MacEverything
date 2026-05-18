@@ -787,6 +787,8 @@ std::unordered_map<uint32_t, uint32_t> SearchEngine::compactRecords() {
         liveCount_.store(cdLiveCount, std::memory_order_relaxed);
         compactionGen_.fetch_add(1, std::memory_order_relaxed);
 
+        buildShortQueryCache();
+
         LOG_INFO("SearchEngine", "COW compaction done: replayed " << replayedAdds
                  << " adds, " << replayedDeletes << " deletes, live=" << cdLiveCount);
     }
