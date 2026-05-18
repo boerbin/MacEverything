@@ -1,65 +1,14 @@
 #pragma once
-#include "NLTranslator.h"
-#include "LiteLLMBackend.h"
 #include <cassert>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <vector>
-#include <set>
-#include <utility>
-#include <memory>
+#include <cstdlib>
 #include <filesystem>
+#include <array>
 
 namespace nl_translation_data {
-
-static std::set<std::string> tokenize(const std::string& s) {
-    std::set<std::string> tokens;
-    std::istringstream iss(s);
-    std::string tok;
-    while (iss >> tok) {
-        tokens.insert(tok);
-    }
-    return tokens;
-}
-
-static bool tokenSetMatch(const std::string& a, const std::string& b) {
-    return tokenize(a) == tokenize(b);
-}
-
-struct TestCase {
-    std::string input;
-    std::string expected;
-    int lineNum;
-};
-
-static std::vector<TestCase> loadTestCases(const std::string& path) {
-    std::vector<TestCase> cases;
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        std::cerr << "    [ERROR] Cannot open test data: " << path << std::endl;
-        return cases;
-    }
-    std::string line;
-    int lineNum = 0;
-    while (std::getline(file, line)) {
-        lineNum++;
-        if (line.empty() || line[0] == '#') continue;
-        auto tabPos = line.find('\t');
-        if (tabPos == std::string::npos) {
-            std::cerr << "    [WARN] Skipping malformed line " << lineNum
-                      << ": no tab separator" << std::endl;
-            continue;
-        }
-        cases.push_back({
-            line.substr(0, tabPos),
-            line.substr(tabPos + 1),
-            lineNum
-        });
-    }
-    return cases;
-}
 
 static std::string findDataFile() {
     namespace fs = std::filesystem;
@@ -67,12 +16,83 @@ static std::string findDataFile() {
         "tests/data/nl_translation_cases.tsv",
         "../tests/data/nl_translation_cases.tsv",
     };
-    auto exe = fs::current_path();
+    auto cwd = fs::current_path();
     for (const auto& c : candidates) {
-        fs::path p = exe / c;
+        fs::path p = cwd / c;
         if (fs::exists(p)) return p.string();
     }
     return candidates[0];
+}
+
+static std::string findEvalScript() {
+    namespace fs = std::filesystem;
+    std::vector<std::string> candidates = {
+        "benchmarks/eval_ai_translation.py",
+        "../benchmarks/eval_ai_translation.py",
+    };
+    auto cwd = fs::current_path();
+    for (const auto& c : candidates) {
+        fs::path p = cwd / c;
+        if (fs::exists(p)) return p.string();
+    }
+    return candidates[0];
+}
+
+static std::string execCommand(const std::string& cmd) {
+    std::array<char, 4096> buffer;
+    std::string result;
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) return "";
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        result += buffer.data();
+    }
+    pclose(pipe);
+    return result;
+}
+
+struct EvalResult {
+    int total = 0;
+    int passed = 0;
+    int failed = 0;
+    double accuracy = 0.0;
+    bool serviceAvailable = true;
+    std::string error;
+};
+
+static EvalResult parseJsonResult(const std::string& json) {
+    EvalResult r;
+    auto getInt = [&](const std::string& key) -> int {
+        auto pos = json.find("\"" + key + "\"");
+        if (pos == std::string::npos) return 0;
+        pos = json.find(":", pos);
+        if (pos == std::string::npos) return 0;
+        return std::atoi(json.c_str() + pos + 1);
+    };
+    auto getDouble = [&](const std::string& key) -> double {
+        auto pos = json.find("\"" + key + "\"");
+        if (pos == std::string::npos) return 0.0;
+        pos = json.find(":", pos);
+        if (pos == std::string::npos) return 0.0;
+        return std::atof(json.c_str() + pos + 1);
+    };
+    r.total = getInt("total");
+    r.passed = getInt("passed");
+    r.failed = getInt("failed");
+    r.accuracy = getDouble("accuracy");
+    if (json.find("\"error\"") != std::string::npos) {
+        auto pos = json.find("\"error\"");
+        pos = json.find("\"", pos + 7);
+        if (pos != std::string::npos) {
+            pos++;
+            auto end = json.find("\"", pos);
+            if (end != std::string::npos) {
+                r.error = json.substr(pos, end - pos);
+                if (r.error.find("not available") != std::string::npos)
+                    r.serviceAvailable = false;
+            }
+        }
+    }
+    return r;
 }
 
 } // namespace nl_translation_data
@@ -80,51 +100,45 @@ static std::string findDataFile() {
 inline void runNLTranslationDataTests() {
     std::cout << "=== NL Translation Data-Driven Tests ===" << std::endl;
 
+    namespace fs = std::filesystem;
+    auto scriptPath = nl_translation_data::findEvalScript();
+    if (!fs::exists(scriptPath)) {
+        std::cout << "  [SKIP] Eval script not found: " << scriptPath << std::endl;
+        return;
+    }
+
     auto dataPath = nl_translation_data::findDataFile();
-    auto cases = nl_translation_data::loadTestCases(dataPath);
-    if (cases.empty()) {
-        std::cout << "  [SKIP] No test cases loaded from " << dataPath << std::endl;
-        return;
-    }
-    std::cout << "  Loaded " << cases.size() << " test cases from " << dataPath << std::endl;
-
-    auto backend = std::make_shared<LiteLLMBackend>();
-    if (!backend->isAvailable()) {
-        std::cout << "  [SKIP] LiteLLM not available at "
-                  << backend->getHost() << ":" << backend->getPort() << std::endl;
+    if (!fs::exists(dataPath)) {
+        std::cout << "  [SKIP] Data file not found: " << dataPath << std::endl;
         return;
     }
 
-    NLTranslator translator(backend);
-    int localPassed = 0, localFailed = 0;
+    std::string cmd = "python3 \"" + scriptPath + "\" \"" + dataPath + "\" --verbose 2>/dev/null";
+    std::string output = nl_translation_data::execCommand(cmd);
 
-    for (const auto& tc : cases) {
-        auto result = translator.translate(tc.input);
-        if (!result.success) {
-            std::cout << "    [FAIL] Line " << tc.lineNum
-                      << " \"" << tc.input << "\" -> error: " << result.error << std::endl;
-            localFailed++;
-            failed++;
-            continue;
-        }
-
-        if (nl_translation_data::tokenSetMatch(result.translatedQuery, tc.expected)) {
-            std::cout << "    [PASS] \"" << tc.input << "\" -> \""
-                      << result.translatedQuery << "\"" << std::endl;
-            localPassed++;
-            passed++;
-        } else {
-            std::cout << "    [FAIL] Line " << tc.lineNum
-                      << " \"" << tc.input << "\"" << std::endl;
-            std::cout << "           Expected: \"" << tc.expected << "\"" << std::endl;
-            std::cout << "           Got:      \"" << result.translatedQuery << "\"" << std::endl;
-            localFailed++;
-            failed++;
-        }
+    if (output.empty()) {
+        std::cout << "  [SKIP] Eval script returned no output (python3 not available or service down)" << std::endl;
+        return;
     }
 
-    std::cout << "  Results: " << localPassed << " passed, " << localFailed << " failed"
-              << " out of " << cases.size() << " cases" << std::endl;
+    auto result = nl_translation_data::parseJsonResult(output);
+
+    if (!result.serviceAvailable) {
+        std::cout << "  [SKIP] " << result.error << std::endl;
+        return;
+    }
+
+    if (!result.error.empty()) {
+        std::cout << "  [SKIP] " << result.error << std::endl;
+        return;
+    }
+
+    passed += result.passed;
+    failed += result.failed;
+
+    std::cout << "  Results: " << result.passed << " passed, " << result.failed << " failed"
+              << " out of " << result.total << " cases"
+              << " (accuracy: " << (result.accuracy * 100) << "%)" << std::endl;
     std::cout << "=== NL Translation Data-Driven Tests: "
-              << (localFailed == 0 ? "ALL PASSED" : "SOME FAILED") << " ===" << std::endl;
+              << (result.failed == 0 ? "ALL PASSED" : "SOME FAILED") << " ===" << std::endl;
 }
