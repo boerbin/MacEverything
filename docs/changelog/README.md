@@ -153,6 +153,8 @@
 | [164](164-builtin-llm-refactoring.md) | refactor | 内置 LLM：用 llama.cpp + Qwen2.5-0.5B 替代 Ollama/LiteLLM，移除语义搜索 | 2026-05-16 |
 | [166](166-nl-translation-data-test.md) | test | AI 搜索翻译数据驱动测试框架（part 86），TSV 加载 + token-set 顺序无关匹配 | 2026-05-16 |
 | [167](167-ai-logging-prompt-file-focus-fix.md) | feature | AI 翻译日志/耗时 + Prompt 外部加载 + 幻觉修复 + 焦点修复 | 2026-05-16 |
+| [168](168-llama-token-logging.md) | feature | LlamaBackend token count 日志 + n_ctx 溢出保护 | 2026-05-17 |
+| [169](169-eval-ai-translation-script.md) | feature | 共享 AI 翻译评估 Python 脚本，C++ test 和 autoloop 统一调用 | 2026-05-18 |
 
 ## 统计
 
