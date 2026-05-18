@@ -310,6 +310,12 @@ class SearchViewModel: ObservableObject {
 
             if isAISearch {
                 // AI default: NL translate → file name search (2s debounce or Enter)
+                displayItems = []
+                cachedResults = []
+                loadedCount = 0
+                totalMatches = 0
+                isAITranslating = true
+                translatedQuery = nil
                 searchTask = Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     guard !Task.isCancelled else { return }
