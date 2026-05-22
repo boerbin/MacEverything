@@ -108,6 +108,10 @@
         config.cachePath = PathUtils::getDefaultCachePath();
         config.logPath = PathUtils::getDefaultLogPath();
         config.httpPort = 19860;
+        NSString *bundlePrompt = [[NSBundle mainBundle] pathForResource:@"prompt" ofType:@"txt"];
+        if (bundlePrompt) {
+            config.bundlePromptPath = std::string([bundlePrompt UTF8String]);
+        }
         _serviceEngine = std::make_shared<ServiceEngine>(config);
 
         // Pre-install admin callbacks so HttpServer has them when auto-started

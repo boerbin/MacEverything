@@ -30,6 +30,7 @@
 		A1000013 /* ContentResultRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001F; };
 		A1000014 /* ContentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000020; };
 		A1000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000021; };
+		A10000B0 /* prompt.txt in Resources */ = {isa = PBXBuildFile; fileRef = A20000B0; };
 		A1000016 /* MacSearchBridge+Content.mm in Sources */ = {isa = PBXBuildFile; fileRef = A2000023; };
 		A1000017 /* SearchEnginePersistence.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A2000024; };
 		A1000018 /* IndexRefreshThrottle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000025; };
@@ -125,6 +126,7 @@
 		A200001F /* ContentResultRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentResultRow.swift; sourceTree = "<group>"; };
 		A2000020 /* ContentSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentSettingsView.swift; sourceTree = "<group>"; };
 		A2000021 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000B0 /* prompt.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = prompt.txt; sourceTree = "<group>"; };
 		A2000022 /* MacSearchBridge_Internal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacSearchBridge_Internal.h; sourceTree = "<group>"; };
 		A2000023 /* MacSearchBridge+Content.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = "MacSearchBridge+Content.mm"; sourceTree = "<group>"; };
 		A2000024 /* SearchEnginePersistence.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SearchEnginePersistence.cpp; sourceTree = "<group>"; };
@@ -215,6 +217,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000015 /* Assets.xcassets in Resources */,
+				A10000B0 /* prompt.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,6 +272,7 @@
 				A4000005 /* Core */,
 				C4000001 /* CLI */,
 				A2000021 /* Assets.xcassets */,
+				A20000B0 /* prompt.txt */,
 				A2000010 /* MacEverything-Bridging-Header.h */,
 				A2000011 /* Info.plist */,
 				A2000012 /* MacEverything.entitlements */,

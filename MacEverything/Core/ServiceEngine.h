@@ -24,6 +24,7 @@ struct ServiceConfig {
     std::string scanRoot = "/";
     std::string cachePath;   // e.g. ~/Library/Caches/com.maceverything.app
     std::string logPath;     // e.g. ~/Library/Logs/MacEverything
+    std::string bundlePromptPath;  // prompt.txt from app bundle Resources
     uint16_t httpPort = 0;   // 0 = no HTTP server; >0 = auto-start after index is ready
 };
 
