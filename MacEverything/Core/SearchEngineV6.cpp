@@ -2,6 +2,7 @@
 #include "StringUtils.h"
 #include "Logger.h"
 #include <algorithm>
+#include <chrono>
 #include <thread>
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -145,11 +146,10 @@ std::string SearchEngine::completePhase2() {
 #endif
     }
 
+    auto phase2Start = std::chrono::steady_clock::now();
     LOG_INFO("SearchEngine", "Phase 2: building trigram indices in background...");
 
     // Snapshot data needed for building indices (under shared lock)
-    // Only snapshot types_ (lightweight ~5MB for 5.5M records) instead of
-    // the full SoA data (~440MB if using FileRecord structs).
     std::vector<uint8_t> snapTypes;
     std::vector<int64_t> snapModTimes;
     StringPool snapNamePool;
@@ -157,6 +157,7 @@ std::string SearchEngine::completePhase2() {
     std::vector<uint32_t> snapPathIndices;
     uint32_t snapPathPoolSize;
     uint32_t snapSize;
+    auto snapStart = std::chrono::steady_clock::now();
     {
         std::shared_lock lock(mutex_);
         snapTypes = types_;
@@ -167,17 +168,42 @@ std::string SearchEngine::completePhase2() {
         snapPathPoolSize = pathPool_.entryCount();
         snapSize = static_cast<uint32_t>(types_.size());
     }
+    auto snapMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - snapStart).count();
 
-    // Build all indices without holding any lock (~3s)
+    // Build all indices without holding any lock
+    auto t0 = std::chrono::steady_clock::now();
     auto trigramIndex = buildTrigramIndexFromData(snapTypes, snapNamePool);
-    auto pathTrigramIndex = buildPathTrigramIndexFromData(snapLowerPathPool);
-    auto pathIdxToRecords = buildPathIdxToRecordsFromData(snapTypes, snapPathIndices, snapPathPoolSize);
-    auto recentCache = buildRecentCacheFromData(snapTypes, snapModTimes, kRecentCacheSize);
-    auto extensionIndex = buildExtensionIndexFromData(snapTypes, snapNamePool);
+    auto trigramMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
 
-    LOG_INFO("SearchEngine", "Phase 2: indices built, swapping under lock...");
+    t0 = std::chrono::steady_clock::now();
+    auto pathTrigramIndex = buildPathTrigramIndexFromData(snapLowerPathPool);
+    auto pathTrigramMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    t0 = std::chrono::steady_clock::now();
+    auto pathIdxToRecords = buildPathIdxToRecordsFromData(snapTypes, snapPathIndices, snapPathPoolSize);
+    auto pathIdxMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    t0 = std::chrono::steady_clock::now();
+    auto recentCache = buildRecentCacheFromData(snapTypes, snapModTimes, kRecentCacheSize);
+    auto recentMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    t0 = std::chrono::steady_clock::now();
+    auto extensionIndex = buildExtensionIndexFromData(snapTypes, snapNamePool);
+    auto extMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    LOG_INFO("SearchEngine", "Phase 2 build done: snap=" << snapMs
+             << "ms trigram=" << trigramMs << "ms pathTrigram=" << pathTrigramMs
+             << "ms pathIdx=" << pathIdxMs << "ms recent=" << recentMs
+             << "ms ext=" << extMs << "ms");
 
     // Swap under unique lock and replay mutations that occurred during build
+    auto swapStart = std::chrono::steady_clock::now();
     {
         std::unique_lock lock(mutex_);
 
@@ -192,7 +218,6 @@ std::string SearchEngine::completePhase2() {
         uint32_t replayCount = 0;
         for (uint32_t i = snapSize; i < currentSize; i++) {
             if (types_[i] == 0) continue;
-            // Add trigrams for this record
             addTrigramsForRecord(i, namePool_.data(i), namePool_.length(i));
             addPathTrigramsForRecord(i);
             addExtensionForRecord(i);
@@ -204,19 +229,25 @@ std::string SearchEngine::completePhase2() {
         for (uint32_t i = 0; i < snapSize; i++) {
             if (i >= types_.size()) break;
             if (snapTypes[i] != 0 && types_[i] == 0) {
-                // Was live in snapshot, now tombstoned — trigram was built, need to remove
-                // The trigram entry points at index i which is now tombstoned.
-                // Query-time type==0 check will filter it, but we can clean up explicitly.
-                removeTrigramsForRecord(i);  // Safe: namePool_[i] is tombstoned, this is a no-op
+                removeTrigramsForRecord(i);
             }
         }
 
+        auto replayMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - swapStart).count();
+
         phase2Pending_.store(false, std::memory_order_release);
 
+        t0 = std::chrono::steady_clock::now();
         buildShortQueryCache();
+        auto sqcMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
 
+        auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - phase2Start).count();
         LOG_INFO("SearchEngine", "Phase 2 complete: replayed " << replayCount
-                 << " mutations, trigram indices active, short query cache built");
+                 << " mutations | timing: swap+replay=" << replayMs
+                 << "ms sqcache=" << sqcMs << "ms total=" << totalMs << "ms");
     }
     return {};
 }

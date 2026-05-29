@@ -1,6 +1,7 @@
 #include "IndexPersistence.h"
 #include "Logger.h"
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <cmath>
 
@@ -146,6 +147,8 @@ void IndexPersistence::flush(const IndexMetadata& metadata, bool force) {
         }
     }
 
+    auto flushStart = std::chrono::steady_clock::now();
+
     // Check if full compaction is needed (tombstone ratio)
     uint32_t totalCount = engine_->recordCount();
     uint32_t liveCount = engine_->liveRecordCount();
@@ -170,22 +173,36 @@ void IndexPersistence::flush(const IndexMetadata& metadata, bool force) {
 
     // 2. Atomically swap WAL
     std::shared_ptr<IndexWAL> oldWal;
+    auto walSwapStart = std::chrono::steady_clock::now();
     {
         std::lock_guard<std::mutex> lock(walMutex_);
         oldWal = wal_;
         wal_ = newWal;
     }
+    auto walSwapMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - walSwapStart).count();
     engine_->attachWAL(newWal);
 
     // 3. Full rewrite v6 flat format
+    auto rewriteStart = std::chrono::steady_clock::now();
     bool writeOk = flatWriter_->fullRewrite(*engine_, metadata);
+    auto rewriteMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - rewriteStart).count();
 
     if (writeOk) {
-        LOG_INFO("IndexPersistence", "Flushed v6 flat index, lastEventId=" << metadata.lastEventId
-                  << ", liveRecords=" << engine_->liveRecordCount());
         // Save short query cache alongside the index
+        auto cacheStart = std::chrono::steady_clock::now();
         std::string cachePath = v6Path_ + ".sqcache";
         engine_->getShortQueryCache().saveTo(cachePath);
+        auto cacheMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - cacheStart).count();
+
+        auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - flushStart).count();
+        LOG_INFO("IndexPersistence", "Flushed v6 flat index, lastEventId=" << metadata.lastEventId
+                  << ", liveRecords=" << engine_->liveRecordCount()
+                  << " | timing: walSwap=" << walSwapMs << "ms rewrite=" << rewriteMs
+                  << "ms sqcache=" << cacheMs << "ms total=" << totalMs << "ms");
     } else {
         LOG_ERROR("IndexPersistence", "Failed to flush paged index — keeping old WAL for recovery");
         if (oldWal) oldWal->close();
@@ -206,6 +223,8 @@ void IndexPersistence::flush(const IndexMetadata& metadata, bool force) {
 }
 
 void IndexPersistence::fullCompact(const IndexMetadata& metadata) {
+    auto compactStart = std::chrono::steady_clock::now();
+
     // 1. Open a fresh WAL
     auto newWal = std::make_shared<IndexWAL>();
     std::string newWalPath = walPath_ + ".new";
@@ -216,36 +235,55 @@ void IndexPersistence::fullCompact(const IndexMetadata& metadata) {
 
     // 2. Swap WAL
     std::shared_ptr<IndexWAL> oldWal;
+    auto walSwapStart = std::chrono::steady_clock::now();
     {
         std::lock_guard<std::mutex> lock(walMutex_);
         oldWal = wal_;
         wal_ = newWal;
     }
+    auto walSwapMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - walSwapStart).count();
     engine_->attachWAL(newWal);
 
     // 3. Compact in-memory records (remove tombstones)
+    auto compactRecStart = std::chrono::steady_clock::now();
     uint32_t beforeTotal = engine_->recordCount();
     uint32_t beforeLive = engine_->liveRecordCount();
     auto remap = engine_->compactRecords();
+    auto compactRecMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - compactRecStart).count();
     uint32_t reclaimed = beforeTotal - beforeLive;
     if (reclaimed > 0) {
         LOG_INFO("IndexPersistence", "Reclaimed " << reclaimed << " tombstones ("
-                  << beforeTotal << " -> " << beforeLive << " records)");
+                  << beforeTotal << " -> " << beforeLive << " records)"
+                  << " in " << compactRecMs << "ms");
     }
+
+    int64_t remapMs = 0;
     if (!remap.empty() && contentIndex_) {
+        auto remapStart = std::chrono::steady_clock::now();
         contentIndex_->remapFileIndices(remap);
-        // Flush content index to disk so its base file stays in sync with the
-        // search engine's compacted indices.  Without this, the content base
-        // file retains old indices that point to wrong records after restart.
         if (contentPersistence_) {
             contentPersistence_->compact(true);
         }
+        remapMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - remapStart).count();
     }
 
     // 4. Full rewrite v6 flat format
-    if (flatWriter_->fullRewrite(*engine_, metadata)) {
+    auto rewriteStart = std::chrono::steady_clock::now();
+    bool writeOk = flatWriter_->fullRewrite(*engine_, metadata);
+    auto rewriteMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - rewriteStart).count();
+
+    if (writeOk) {
+        auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - compactStart).count();
         LOG_INFO("IndexPersistence", "Full compaction done, lastEventId=" << metadata.lastEventId
-                  << ", liveRecords=" << engine_->liveRecordCount());
+                  << ", liveRecords=" << engine_->liveRecordCount()
+                  << " | timing: walSwap=" << walSwapMs << "ms compact=" << compactRecMs
+                  << "ms remap=" << remapMs << "ms rewrite=" << rewriteMs
+                  << "ms total=" << totalMs << "ms");
     } else {
         LOG_ERROR("IndexPersistence", "Failed to write full compaction — keeping old WAL");
         if (oldWal) oldWal->close();
