@@ -17,9 +17,18 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project Mac
 
 总是在master分支上打包
 
+打包前**必须**把 re2/abseil 等 Homebrew 动态库捆绑进 app，否则在没有装 Homebrew 的机器上会因
+`Library not loaded: libre2.11.dylib` 崩溃（见 issue #2）。`make dmg` 已自动执行该步骤；手动打包时：
+
 ```bash
+# 1. 捆绑外部 dylib 并校验自包含（无 /opt/homebrew 链接）
+bash scripts/bundle-dylibs.sh build/Release/MacEverything.app MacEverything/MacEverything.entitlements
+bash scripts/verify-bundle.sh build/Release/MacEverything.app
+# 2. 生成 DMG
 hdiutil create -volname MacEverything -srcfolder build/Release/MacEverything.app -ov -format UDZO /Users/wujian/data/project/mac_everything/MacEverything.dmg
 ```
+
+推荐直接用 `make dmg`（自动完成 构建 → 捆绑 → 校验 → 打包）。
 
 # 软件开发工作流（Agent 必须遵守）
 
@@ -72,9 +81,15 @@ Agent 在接到功能或 bug 任务时，应先输出简短计划与测试清单
 每次有新变更合并到 master 后，必须执行以下验收流程：
 
 1. **退出当前运行的 app**（如果正在运行）
-2. **在 master 分支上构建并打包**：
+2. **在 master 分支上构建并打包**（`make dmg` 会自动完成 构建 → 捆绑 re2/abseil dylib → 自包含校验 → 打包）：
+  ```bash
+   make dmg
+  ```
+   或手动分步：
   ```bash
    DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project MacEverything.xcodeproj -scheme MacEverything -configuration Release build SYMROOT=build
+   bash scripts/bundle-dylibs.sh build/Release/MacEverything.app MacEverything/MacEverything.entitlements
+   bash scripts/verify-bundle.sh build/Release/MacEverything.app
    hdiutil create -volname MacEverything -srcfolder build/Release/MacEverything.app -ov -format UDZO /Users/wujian/data/project/mac_everything/MacEverything.dmg
   ```
 3. **启动 app**：打开打包好的 dmg 并运行 MacEverything.app, 使用`open MacEverything.app --args --minimized`启动后最小化,降低对用户的打扰

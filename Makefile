@@ -16,7 +16,7 @@ LLAMA_LIBS = -Wl,-force_load,$(LLAMA_BUILD)/src/libllama.a -Wl,-force_load,$(LLA
 LLAMA_LDFLAGS = -framework Metal -framework MetalKit -framework Accelerate
 
 # === Build targets ===
-.PHONY: test test-fast test-slow test-all test-asan test-tsan build clean app dmg daemon help
+.PHONY: test test-fast test-slow test-all test-asan test-tsan build clean app bundle verify-bundle dmg daemon help
 
 # Compile .mm files to object files with ObjC++ flags
 %.o: %.mm
@@ -69,8 +69,18 @@ app:
 		-project MacEverything.xcodeproj -scheme MacEverything \
 		-configuration Release build SYMROOT=build
 
+# === Bundle external dylibs (re2 + abseil) into the .app ===
+# Makes the app self-contained so it runs on machines without Homebrew (issue #2).
+bundle: app
+	bash scripts/bundle-dylibs.sh build/Release/MacEverything.app MacEverything/MacEverything.entitlements
+	bash scripts/verify-bundle.sh build/Release/MacEverything.app
+
+# Standalone check: assert the already-built app has no external dylib links.
+verify-bundle:
+	bash scripts/verify-bundle.sh build/Release/MacEverything.app
+
 # === Package ===
-dmg: app
+dmg: bundle
 	-hdiutil detach /Volumes/MacEverything 2>/dev/null
 	hdiutil create -volname MacEverything \
 		-srcfolder build/Release/MacEverything.app \
@@ -90,7 +100,9 @@ help:
 	@echo "  make test-slow  - Run slow integration tests (Part 1, 4, 6)"
 	@echo "  make test-all   - Run all tests"
 	@echo "  make app        - Build MacEverything.app via Xcode"
-	@echo "  make dmg        - Build + package into DMG"
+	@echo "  make bundle     - Bundle re2+abseil dylibs into the app (self-contained)"
+	@echo "  make verify-bundle - Assert the built app has no external dylib links"
+	@echo "  make dmg        - Build + bundle + package into DMG"
 	@echo "  make daemon     - Build CLI daemon (maceverything-daemon)"
 	@echo "  make benchmark  - Build benchmark binary"
 	@echo "  make clean      - Remove build artifacts"

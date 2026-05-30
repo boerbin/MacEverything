@@ -157,6 +157,7 @@
 | [169](169-eval-ai-translation-script.md) | feature | 共享 AI 翻译评估 Python 脚本，C++ test 和 autoloop 统一调用 | 2026-05-18 |
 | [170](170-fix-short-query-cache-compaction.md) | bugfix | 修复 COW 压缩后 ShortQueryCache 索引失效导致单字符搜索结果错误 | 2026-05-18 |
 | [171](171-fix-ai-stale-results.md) | bugfix | 修复 AI 模式输入时旧搜索结果残留，立即清除并显示翻译状态 | 2026-05-18 |
+| [174](174-bundle-dylibs.md) | bugfix | 打包外部 dylib（re2+abseil）进 .app 使其自包含，修复无 Homebrew 机器启动崩溃 (issue #2) | 2026-05-30 |
 
 ## 统计
 
