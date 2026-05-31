@@ -275,6 +275,8 @@
 
 ## 四、推荐技术方案与实施路径
 
+![序列建模落地路线图：Phase 1 DIN（第1-4周）→ Phase 2 BST（第5-8周）→ Phase 3 SIM/SDIM（第9-16周），三道 Go/No-Go 决策门，CTR 目标 +5%/+10%/+15%](images/infographic-ctr-roadmap.png)
+
 ### 4.1 总体策略：渐进式演进
 
 采用"由简到繁、逐步验证"的策略，分三个阶段推进：

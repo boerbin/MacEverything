@@ -50,6 +50,8 @@ $$P(click=1 | user, item, context)$$
 
 本节按时间线介绍 CTR 领域的核心模型，涵盖**浅层线性模型**（LR/POLY2/FM/FFM）、**深度混合模型**（Wide&Deep/DeepFM/DCN/xDeepFM）、**用户行为建模**（DIN/DIEN）以及**工业级架构**（DLRM）。其中，序列建模方法（BST/SIM 等）在第 4 节做专题展开。
 
+![CTR 模型演进时间线：浅层模型（LR/POLY2/FM/FFM）→ 深度双路（Wide&Deep/DeepFM/DCN/xDeepFM）→ 序列兴趣（DIN/DIEN/BST/SIM）→ 系统与多任务（DLRM/MMOE/PLE/STAR）](images/infographic-ctr-evolution.png)
+
 ### 2.1 Logistic Regression (LR)
 
 **核心思想**：将 CTR 预估建模为线性分类问题，通过手工特征工程构造交叉特征。

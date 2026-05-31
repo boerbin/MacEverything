@@ -160,6 +160,7 @@
 | [174](174-bundle-dylibs.md) | bugfix | 打包外部 dylib（re2+abseil）进 .app 使其自包含，修复无 Homebrew 机器启动崩溃 (issue #2) | 2026-05-30 |
 | [175](175-arch-doc-refresh.md) | docs | 架构深度文档刷新：新增 ShortQueryCache(§9)/内置 LLM(§14) 章节，刷新 R108 性能数据与 R67/Flush 运行时稳定性 P0 议题，更新附录 A/B/C | 2026-05-31 |
 | [176](176-doc-illustrations.md) | docs | 文档配图：用 gpt-image-2 为架构/Agent 开发/CTR 文档生成 8 张发布级 hero+信息图（叠加不替换 dot 图），并纳入 3 个 WIP 文档至版本控制 | 2026-05-31 |
+| [177](177-ctr-doc-infographics.md) | docs | CTR 文档配图补全：新增模型演进时间线（§2）与序列建模 16 周落地路线图（§四）2 张信息图，使 CTR 文档配图密度与 tech 文档对等 | 2026-05-31 |
 
 ## 统计
 
