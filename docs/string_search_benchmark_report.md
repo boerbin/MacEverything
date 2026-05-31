@@ -7,6 +7,8 @@
 **编译器**：clang++ -std=c++20 -O2  
 **操作系统**：macOS (Darwin 24.3.0)
 
+![字符串搜索吞吐量对比（GB/s）：单线程 NEON 2x 11.56 领先 std::find 9.5 倍；12 线程 NEON 2x+MT 达 74.30 GB/s，逼近 LPDDR5 内存带宽上限](images/infographic-simd-benchmark.png)
+
 ---
 
 ## 测试概述
