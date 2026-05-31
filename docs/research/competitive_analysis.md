@@ -1,6 +1,6 @@
 # 同类文件搜索产品竞品分析：算法实现与速度优化技巧
 
-![文件搜索产品竞品全景：Windows（Everything）/ Linux（FSearch·plocate）/ macOS（Spotlight·Alfred·Find Any File）/ 跨平台（fd·ripgrep·fzf）——索引与搜索速度技巧对比](images/hero-competitive-analysis.png)
+![文件搜索产品竞品全景：Windows（Everything）/ Linux（FSearch·plocate）/ macOS（Spotlight·Alfred·Find Any File）/ 跨平台（fd·ripgrep·fzf）——索引与搜索速度技巧对比](../images/hero-competitive-analysis.png)
 
 ## 目录
 

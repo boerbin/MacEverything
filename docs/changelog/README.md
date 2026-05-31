@@ -162,6 +162,7 @@
 | [176](176-doc-illustrations.md) | docs | 文档配图：用 gpt-image-2 为架构/Agent 开发/CTR 文档生成 8 张发布级 hero+信息图（叠加不替换 dot 图），并纳入 3 个 WIP 文档至版本控制 | 2026-05-31 |
 | [177](177-ctr-doc-infographics.md) | docs | CTR 文档配图补全：新增模型演进时间线（§2）与序列建模 16 周落地路线图（§四）2 张信息图，使 CTR 文档配图密度与 tech 文档对等 | 2026-05-31 |
 | [178](178-final-doc-images.md) | docs | 配图收尾：为竞品分析（hero）与 SIMD 字符串搜索基准（吞吐量条形图）补 2 张配图，至此所有已跟踪面向人文档均有插图（共 12 张） | 2026-05-31 |
+| [179](179-fix-research-image-path.md) | docs | 修复竞品分析配图断链：`docs/research/` 下文档引用应为 `../images/`（PNG 在 `docs/images/`），由 `images/` 改为 `../images/`；全量复扫 12 处引用均 OK | 2026-05-31 |
 
 ## 统计
 
