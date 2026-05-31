@@ -158,6 +158,7 @@
 | [170](170-fix-short-query-cache-compaction.md) | bugfix | 修复 COW 压缩后 ShortQueryCache 索引失效导致单字符搜索结果错误 | 2026-05-18 |
 | [171](171-fix-ai-stale-results.md) | bugfix | 修复 AI 模式输入时旧搜索结果残留，立即清除并显示翻译状态 | 2026-05-18 |
 | [174](174-bundle-dylibs.md) | bugfix | 打包外部 dylib（re2+abseil）进 .app 使其自包含，修复无 Homebrew 机器启动崩溃 (issue #2) | 2026-05-30 |
+| [175](175-arch-doc-refresh.md) | docs | 架构深度文档刷新：新增 ShortQueryCache(§9)/内置 LLM(§14) 章节，刷新 R108 性能数据与 R67/Flush 运行时稳定性 P0 议题，更新附录 A/B/C | 2026-05-31 |
 
 ## 统计
 

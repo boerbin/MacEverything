@@ -1,6 +1,6 @@
 # MacEverything 架构深度剖析
 
-> 面向工程/系统/算法同学的技术分享 | 2026-04-25
+> 面向工程/系统/算法同学的技术分享 | 初版 2026-04-25 · 更新 2026-05-31（R108 数据、短查询缓存、内置 LLM 自然语言搜索）
 
 ---
 
@@ -14,14 +14,16 @@
 6. [Trigram 倒排索引](#6-trigram-倒排索引)
 7. [SIMD 向量化字符串搜索](#7-simd-向量化字符串搜索)
 8. [查询语言与解析器](#8-查询语言与解析器)
-9. [持久化与崩溃恢复](#9-持久化与崩溃恢复)
-10. [实时文件监控：FSEvents](#10-实时文件监控fsevents)
-11. [并发模型与锁设计](#11-并发模型与锁设计)
-12. [内容搜索子系统](#12-内容搜索子系统)
-13. [性能演进数据](#13-性能演进数据)
-14. [竞品对比与差异化](#14-竞品对比与差异化)
-15. [设计得失与已知问题](#15-设计得失与已知问题)
-16. [演化方向](#16-演化方向)
+9. [短查询缓存：ShortQueryCache](#9-短查询缓存shortquerycache)
+10. [持久化与崩溃恢复](#10-持久化与崩溃恢复)
+11. [实时文件监控：FSEvents](#11-实时文件监控fsevents)
+12. [并发模型与锁设计](#12-并发模型与锁设计)
+13. [内容搜索子系统](#13-内容搜索子系统)
+14. [内置 LLM 自然语言搜索](#14-内置-llm-自然语言搜索)
+15. [性能演进数据](#15-性能演进数据)
+16. [竞品对比与差异化](#16-竞品对比与差异化)
+17. [设计得失与已知问题](#17-设计得失与已知问题)
+18. [演化方向](#18-演化方向)
 
 ---
 
@@ -31,13 +33,15 @@ MacEverything 是 macOS 上的全盘文件名搜索工具，对标 Windows 平�
 
 | 指标 | 目标 | 实际 |
 |------|------|------|
-| 全盘扫描 | < 10s | ~8s（4.86M 文件） |
-| 搜索延迟 | < 50ms | avg 10.5ms（R29） |
-| 冷启动 | < 1s | ~200ms（Phase 1） |
-| 内存占用 | 合理 | ~300MB（4.86M 记录） |
+| 全盘扫描 | < 10s | ~8s（首次全盘） |
+| 搜索延迟 | < 50ms | 1-2 字符 0.4ms（缓存）/ 常规词 ~10-20ms（trigram） |
+| 冷启动 | < 1s | ~200ms（Phase 1 主线程） |
+| 内存占用 | 合理 | ~300-400MB（6.18M 记录） |
 | 实时性 | 秒级 | FSEvents 300ms 合并窗口 |
 
-技术栈：C++20 核心引擎 + Objective-C++ 桥接 + SwiftUI 界面。
+> **数据集说明**：本文性能数据来自 M3 Pro 长跑实测。截至 2026-05-30 运行时索引规模为 **total 6,183,351 / live 5,412,386**（约 12.5% 为待 compaction 的 tombstone）。早期文档引用的 4.86M 为更早期的快照，性能演进图表（§15）保留历史 R1→R29 数据以体现优化轨迹，运行时延迟则以最新 R108 电池为准。
+
+技术栈：C++20 核心引擎 + Objective-C++ 桥接 + SwiftUI 界面 + 内置 llama.cpp（自然语言搜索）。Core 引擎同时编译为 CLI daemon、HTTP API（:19860）与 MCP server，可独立于 GUI 运行。
 
 ---
 
@@ -309,23 +313,32 @@ digraph query_pipeline {
 
 ### 搜索路径对比
 
+实测延迟（M3 Pro，6.18M 记录，R108 暖态电池）：
+
 ```
-路径                   平均延迟(ms)   典型查询
-────────────────────────────────────────────────
-glob-trigram           0.1           *.py（直接查 ext index）
-trigram                4.1           hello（trigram 交集 + SIMD 验证）
-advanced-trigram       6.9           hello ext:cpp（trigram + filter）
-structured             31.8          /usr/local/bin（路径分段查询）
-linear                 57.8          ab（<3 字符，无法用 trigram）
-pure-filter-soa-gcd    104.5         type:folder（全量 SoA 扫描）
+路径                   实测延迟(ms)   典型查询           说明
+──────────────────────────────────────────────────────────────────────
+short-query-cache      0.37          x、ab              1-2 字符 ASCII，O(1) 命中预算缓存（§9）
+advanced-ext-index     5.62          ext:cpp            扩展名索引直查
+main.cpp (词+ext)      9.59          main.cpp           trigram 交集（74 候选）
+MacEverything          17.96         MacEverything      trigram（6.7K 候选）
+hello world            18.04         多词              逐词 trigram 交集
+advanced-trigram       22-30         README、*.swift    trigram 交集 + SIMD 验证
+test（高频词）         47.69         test               137K 候选仅 48ms（SIMD 验证摊薄）
+size:>100m             51.36         数值过滤           pure-filter-soa-gcd 全量 SoA 扫描
+dm:today               51.75         日期过滤           pure-filter-soa-gcd
+中文测试 / path:/Users 135-144       CJK / 路径子串     advanced-linear-gcd（无 trigram 覆盖）
+content:import         208           内容关键词         pure-filter（内容倒排，见 §13）
 ```
+
+> 注：早期文档的 `glob-trigram`/`trigram`/`linear` 路径名在统一进 Advanced 求值管线后，对外 `searchPath` 标签已演化为 `advanced-trigram`/`advanced-ext-index`/`advanced-linear-gcd`/`pure-filter-soa-gcd`。1-2 字符查询不再走线性扫描，而是命中 §9 的 `short-query-cache` 快路径（57.8ms → 0.37ms，**~150x**）。CJK 短词与 `path:` 子串目前仍走 `advanced-linear-gcd`（trigram 对 CJK/路径覆盖不足，见 §17）。
 
 ### 搜索路径决策树
 
 查询进入时，引擎根据查询特征自动选择最优搜索路径：
 
-```graphviz
-// 搜索路径自动决策树
+```dot
+// 搜索路径自动决策树（2026-05 更新：含 short-query-cache 快路径）
 digraph search_decision {
     rankdir=TB
     node [shape=diamond, style="filled,rounded", fontname="Helvetica", fontsize=10, fillcolor="#FFF9C4"]
@@ -333,36 +346,39 @@ digraph search_decision {
 
     Start [label="查询输入", shape=ellipse, fillcolor="#E3F2FD"]
 
+    IsShort [label="1-2 字符\n纯 ASCII 字母?"]
     HasText [label="含文本\n搜索词?"]
-    HasAdvanced [label="含高级语法?\n| ! < > \" filter:"]
-    LenGE3 [label="搜索词\n≥ 3 字符?"]
-    IsGlob [label="含 glob\n模式?"]
+    HasGlob [label="含 glob\n模式? (* ?)"]
     HasSlash [label="含 / ?\n(路径查询)"]
     OnlyFilter [label="仅过滤条件?\next: size: type:"]
+    Len3 [label="搜索词\n≥ 3 字符?"]
 
     // 叶子节点 — 搜索路径
-    GlobTri [label="glob-trigram\n~0.1ms", shape=box, fillcolor="#A5D6A7"]
-    Trigram [label="trigram\n~4.1ms", shape=box, fillcolor="#A5D6A7"]
-    AdvTri [label="advanced-trigram\n~6.9ms", shape=box, fillcolor="#C8E6C9"]
-    Structured [label="structured\n~31.8ms", shape=box, fillcolor="#FFE0B2"]
-    Linear [label="linear\n~57.8ms", shape=box, fillcolor="#FFCDD2"]
-    PureFilter [label="pure-filter-soa-gcd\n~104.5ms", shape=box, fillcolor="#FFCDD2"]
+    SQC [label="short-query-cache\n~0.37ms (O(1))", shape=box, fillcolor="#80DEEA"]
+    GlobTri [label="advanced-trigram\n(glob 多段交集) ~0.1-1ms", shape=box, fillcolor="#A5D6A7"]
+    Trigram [label="advanced-trigram\n~10-30ms", shape=box, fillcolor="#A5D6A7"]
+    Ext [label="advanced-ext-index\n~5ms", shape=box, fillcolor="#C8E6C9"]
+    Structured [label="structured\n(路径分段) ~30ms", shape=box, fillcolor="#FFE0B2"]
+    Linear [label="advanced-linear-gcd\n~60-145ms\n(CJK 短词 / path: 子串)", shape=box, fillcolor="#FFCDD2"]
+    PureFilter [label="pure-filter-soa-gcd\n~50-210ms (全量 SoA)", shape=box, fillcolor="#FFCDD2"]
 
-    Start -> HasText
+    Start -> IsShort
+    IsShort -> SQC [label="是 → 缓存命中"]
+    IsShort -> HasText [label="否"]
     HasText -> OnlyFilter [label="否"]
-    OnlyFilter -> PureFilter [label="是"]
-    HasText -> HasAdvanced [label="是"]
-    HasAdvanced -> LenGE3 [label="否 (简单查询)"]
-    HasAdvanced -> HasSlash [label="是"]
+    OnlyFilter -> PureFilter [label="是 (size:/dm:/type:)"]
+    OnlyFilter -> Ext [label="仅 ext:"]
+    HasText -> HasSlash [label="是"]
     HasSlash -> Structured [label="是"]
-    HasSlash -> LenGE3 [label="否"]
-    LenGE3 -> IsGlob [label="是"]
-    LenGE3 -> Linear [label="否 (<3字符)"]
-    IsGlob -> GlobTri [label="是 (*.py)"]
-    IsGlob -> Trigram [label="否 (简单)"]
-    OnlyFilter -> AdvTri [label="否\n(text + filter)"]
+    HasSlash -> HasGlob [label="否"]
+    HasGlob -> GlobTri [label="是 (*.py)"]
+    HasGlob -> Len3 [label="否"]
+    Len3 -> Trigram [label="是 (可用 trigram)"]
+    Len3 -> Linear [label="否 (CJK/短词)"]
 }
 ```
+
+> **快路径优先级**：`query()` 在进入统一 Advanced 求值管线前，先尝试两个快路径——目录列举（`dir-list`，纯路径前缀）和短查询缓存（`short-query-cache`，1-2 字符 ASCII）。只有两者都未命中才落入 `queryAdvanced()` 的竞争候选集选择。
 
 ### 纯过滤快速路径
 
@@ -468,9 +484,12 @@ digraph trigram_eval {
 
 ### 关键限制
 
-**Trigram 要求最少 3 个字符。** 1-2 字符的查询（如 `ab`、`桌面`）无法产生 trigram，只能回退到线性扫描。这是 trigram 方案的固有限制，所有使用 trigram 的系统（plocate、ripgrep）都有这个问题。
+**Trigram 要求最少 3 个字符。** 1-2 字符的查询（如 `ab`、`桌面`）无法产生 trigram。这是 trigram 方案的固有限制，所有使用 trigram 的系统（plocate、ripgrep）都有这个问题。
 
-CJK 字符的额外问题：macOS 文件路径以 ASCII 为主，CJK trigram 几乎没有索引覆盖，导致搜索结果可能不完整。
+MacEverything 对此分两种情况处理：
+
+- **1-2 字符纯 ASCII 字母**（`a`…`zz`，共 702 个键）：由 **ShortQueryCache 预算缓存**（§9）以 O(1) 命中，0.37ms 返回，彻底绕开线性扫描。
+- **CJK 短词**（如 `桌面`、`中文`）：macOS 文件路径以 ASCII 为主，CJK trigram 几乎没有索引覆盖；且 CJK 双字不在 702 个 ASCII 缓存键内，仍回退到 `advanced-linear-gcd` 线性扫描（~135ms，见 §15/§17）。这是当前已知短板，规划用 CJK trigram 或 2-gram 索引解决。
 
 ---
 
@@ -619,7 +638,148 @@ digraph ast_transform {
 
 ---
 
-## 9. 持久化与崩溃恢复
+## 9. 短查询缓存：ShortQueryCache
+
+### 问题：1-2 字符查询的线性扫描惩罚
+
+trigram 索引要求查询词 ≥ 3 字符（§6）。1-2 字符的 ASCII 查询（`a`、`ab`）无法产生 trigram，早期版本只能全量线性扫描 6.18M 条记录，**持锁 ~58ms**（旧 `linear` 路径）。而这类查询恰恰是用户输入时**每键必经**的中间状态（输入 "abc" 会先后触发 "a"→"ab"→"abc"），违背「小巧精确快速」定位。
+
+**解法**：把所有可能的 1-2 字符 ASCII 字母查询的 Top-100 结果预先算好缓存起来。26 个 unigram（`a`…`z`）+ 676 个 bigram（`aa`…`zz`）= **702 个键**，O(1) 命中。
+
+### 数据结构（ShortQueryCache.h）
+
+```cpp
+struct ScoredResult { uint32_t score; uint32_t idx; };   // 8 bytes
+struct CacheEntry {
+    BoundedSortedVec<ScoredResult> results{kMaxResults}; // 有界 Top-100，按 score 排序
+    uint32_t totalMatches = 0;                           // 命中总数（UI "X of Y"）
+};
+std::array<CacheEntry, 702> entries_;                    // 扁平数组，O(1) 索引
+
+static constexpr size_t kTotalKeys  = 702;   // 26 + 676
+static constexpr size_t kMaxResults = 100;
+```
+
+**键编码**（`keyIndex()`）：单字符 `'a'..'z'` → `0..25`；双字符 `ab` → `26 + (a-'a')*26 + (b-'a')`。非 1-2 字符 ASCII 小写字母返回 -1（不命中缓存，落回 Advanced 路径）。
+
+`BoundedSortedVec` 是有界排序向量：插入时若未满直接有序插入，已满则仅当新分数优于当前最差项才替换——保证每个键恒定 ≤100 条、内存上界确定（~702 × 100 × 8B ≈ **560KB**）。
+
+### 评分：复用 4 级相关性
+
+缓存内排序与主查询路径一致，`computeScore()` 打包为 `uint32_t`：
+
+```cpp
+// quality: 0=精确  1=前缀  2=词边界  3=普通子串（simdFind 定位 + 前字符非字母数字判定）
+uint32_t score = (0 << 16) | (quality << 8) | min(fullPathLen, 255);
+//                            ↑ 相关性主序     ↑ 路径越短越优（次序）
+```
+
+即「先按相关性档位、同档再按完整路径长度」——与 `queryAdvanced()` 的排序键同构，保证缓存结果与实时查询结果顺序一致。
+
+### 构建：单遍扫描全量记录
+
+`rebuild()` 对 6.18M 记录扫一遍，每条记录提取其文件名中**出现过的**所有 unigram/bigram（`collectHitKeys()` 用 702-bit 局部 `seen[]` 去重，避免同名重复计数），再把该记录按分数 `tryInsert` 进对应键的有界向量：
+
+```
+for each live record:
+    name = lowercase 文件名
+    hitKeys = {name 中出现的所有 a..z 单字符} ∪ {所有 aa..zz 双字符}   // 局部 bitset 去重
+    for ki in hitKeys:
+        entries_[ki].totalMatches++
+        entries_[ki].results.insert({computeScore(...), recordIdx})    // 有界 Top-100
+```
+
+构建在 **Phase 2 完成时触发**（`SearchEngineV6.cpp::completePhase2()` 末尾调用 `buildShortQueryCache()`，与 trigram 索引同批），日志记录 `sqcache=Nms`。
+
+### 增量维护（关键：非 50% 重建，而是就地增删）
+
+> 注：早期设计（plan）曾用「deletedCount 计数 + 50% 阈值重建」。实现演进后改为**就地增量维护**（changelog 165/170），更精确且无周期性重建抖动。
+
+- **新增记录**（`addRecord` 后）：`tryInsert(idx, name, nameLen, fullPathLen)` 把新记录尝试插入其所有 hitKeys 的有界向量（仅当分数进得了 Top-100）。
+- **删除/tombstone**（mutation 路径）：`eraseRecord(idx, name, nameLen)` 从该记录所有 hitKeys 的向量中 `remove_if(idx)` 真正移除条目。
+- **查询时兜底**：`lookup()` 返回的 `results` 仍可能含已被 tombstone 但尚未 erase 的 idx，故快路径在拷贝结果时再做一次 `types_[idx]==0 continue` 的存活过滤（双保险）。
+
+### 查询快路径（SearchEngineQuery.cpp:248-268）
+
+```cpp
+// query() 内，落入 queryAdvanced() 之前
+if (shortQueryCache_.isBuilt()) {
+    if (auto* entry = shortQueryCache_.lookup(pq.lower)) {   // pq.lower 已小写
+        std::vector<uint32_t> result;
+        for (const auto& sr : entry->results) {
+            if (types_[sr.idx] == 0) continue;               // 跳过 tombstone
+            result.push_back(sr.idx);
+            if (maxResults > 0 && result.size() >= maxResults) break;
+        }
+        timing.searchPath = "short-query-cache";
+        return result;                                       // R108 实测 0.37ms
+    }
+}
+```
+
+### 持久化：独立 .sqcache 文件
+
+缓存不进 v6 主索引（保持 v6 格式稳定），单独落盘到 `<v6Path>.sqcache`：
+
+```
+Header: magic 0x56435153 ("SQCS") | version 2 | entryCount 702
+Per-entry(×702): resultCount(4) | totalMatches(4) | ScoredResult[resultCount](8B each)
+```
+
+- **加载**（`IndexPersistence.cpp:43`）：v6 加载后 `getShortQueryCache().loadFrom(cachePath)`；magic/version/entryCount 任一不符即放弃，待 Phase 2 重建。
+- **保存**（`IndexPersistence.cpp:195`）：v6 重写后 `saveTo(cachePath)`，与主索引同生命周期落盘。
+
+### 收益
+
+| 查询 | 旧路径（linear） | ShortQueryCache | 加速比 |
+|------|----------------|-----------------|--------|
+| `x`（1 字符） | ~58ms 持锁全扫 | **0.37ms** O(1) | **~150x** |
+| `ab`（2 字符） | ~58ms | **<1ms** | **~60x+** |
+
+输入框每一次中间击键（"a"→"ab"→"abc"）不再卡顿，且 0.37ms 期间几乎不持锁，消除了短查询对并发写入的阻塞。
+
+```dot
+// ShortQueryCache 生命周期
+digraph sqc {
+    rankdir=LR
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
+
+    subgraph cluster_build {
+        label="构建（Phase 2 末）"
+        style="filled,rounded"; color="#2E7D32"; fillcolor="#E8F5E9"; fontname="Helvetica Bold"
+        Scan [label="单遍扫描 6.18M\ncollectHitKeys + 有界插入", fillcolor="#C8E6C9"]
+        Built [label="702 键 × Top-100\n built_=true", fillcolor="#A5D6A7", shape=doublecircle, fontsize=9]
+        Scan -> Built
+    }
+    subgraph cluster_live {
+        label="运行时增量"
+        style="filled,rounded"; color="#FF9800"; fillcolor="#FFF3E0"; fontname="Helvetica Bold"
+        Add [label="addRecord →\ntryInsert", fillcolor="#FFE0B2"]
+        Del [label="remove/update →\neraseRecord", fillcolor="#FFE0B2"]
+    }
+    subgraph cluster_query {
+        label="查询"
+        style="filled,rounded"; color="#1565C0"; fillcolor="#E3F2FD"; fontname="Helvetica Bold"
+        Look [label="lookup(pq.lower)\n1-2 char → entry", fillcolor="#BBDEFB"]
+        Filter [label="跳过 tombstone\n截断 maxResults", fillcolor="#BBDEFB"]
+        Out [label="0.37ms 返回", fillcolor="#80DEEA", shape=doublecircle, fontsize=9]
+        Look -> Filter -> Out
+    }
+    Disk [label=".sqcache\n(magic SQCS v2)", shape=cylinder, fillcolor="#E1BEE7", style=filled]
+
+    Built -> Add [style=invis]
+    Built -> Look [style=bold, label="isBuilt"]
+    Add -> Look [style=dashed, color="#E65100"]
+    Del -> Look [style=dashed, color="#E65100"]
+    Built -> Disk [label="saveTo", style=dotted]
+    Disk -> Built [label="loadFrom\n(启动)", style=dotted, constraint=false]
+}
+```
+
+---
+
+## 10. 持久化与崩溃恢复
 
 ### 两阶段启动（Sub-Second Cold Start）
 
@@ -780,7 +940,7 @@ flush interval: [30s ←────────→ 600s]
 
 ---
 
-## 10. 实时文件监控：FSEvents
+## 11. 实时文件监控：FSEvents
 
 ### FSEvents 集成
 
@@ -836,7 +996,7 @@ rescanDebounceTimer_: GCD timer    // 5s 防抖
 
 ---
 
-## 11. 并发模型与锁设计
+## 12. 并发模型与锁设计
 
 ### Reader-Writer 锁分层
 
@@ -977,7 +1137,7 @@ batchMutate() 锁分片（SearchEngine.cpp）：
 
 ---
 
-## 12. 内容搜索子系统
+## 13. 内容搜索子系统
 
 ### 架构
 
@@ -1015,9 +1175,134 @@ thread_local uint8_t trigramBitmap[1 << 24 / 8];  // 2MB per thread
 
 ---
 
-## 13. 性能演进数据
+## 14. 内置 LLM 自然语言搜索
 
-### 查询延迟演进（29 轮基准测试）
+### 定位：自然语言 → Everything 查询语法
+
+MacEverything 的查询语法（§8）功能强大但有学习成本。AI 层让用户用自然语言描述意图（"最近改的大 PDF"、"昨天下载的图片"），由一个**本地小模型**翻译成精确的 Everything 查询语法（`ext:pdf size:>10mb dm:last7days`），再交给确定性搜索引擎执行。
+
+**关键设计原则**：AI 只做**翻译**（NL → query syntax），不做检索。检索仍由确定性的 trigram/SIMD 引擎完成。这样既获得自然语言的易用性，又保留毫秒级精确搜索的可解释性与速度——AI 是「输入法」而非「搜索引擎」。
+
+> 演进背景：早期版本依赖外部 Ollama / LiteLLM 进程。为贯彻「自包含、不依赖外部运行时」的瑞士军刀定位（changelog 164），重构为**内置 llama.cpp + 捆绑 GGUF 模型**，开箱即用、无需用户额外安装。远程后端作为可选项保留。
+
+### 架构：IModelBackend 抽象 + 双后端
+
+```dot
+// AI 自然语言搜索栈
+digraph ai_stack {
+    rankdir=TB
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
+
+    subgraph cluster_ui {
+        label="入口"
+        style="filled,rounded"; color="#1565C0"; fillcolor="#E3F2FD"; fontname="Helvetica Bold"
+        Swift [label="SwiftUI\nAIServiceClient / AISettingsView", fillcolor="#BBDEFB"]
+        HTTP [label="HTTP /api/ai/translate\n/api/ai/status /api/ai/prompt", fillcolor="#BBDEFB"]
+        MCP [label="MCP server\n(工具调用)", fillcolor="#BBDEFB"]
+    }
+
+    NLT [label="NLTranslator\nNL → Everything 查询语法\n(passthrough + cleanLLMResponse + prompt)", fillcolor="#FFE0B2"]
+
+    subgraph cluster_mgr {
+        label="模型编排"
+        style="filled,rounded"; color="#9C27B0"; fillcolor="#F3E5F5"; fontname="Helvetica Bold"
+        MM [label="ModelManager\nscan *.gguf / loadAsync / prefer-qwen", fillcolor="#E1BEE7"]
+    }
+
+    IBackend [label="IModelBackend (接口)\nchat(messages, temp, maxTokens)", shape=ellipse, fillcolor="#FFF9C4", style=filled]
+
+    subgraph cluster_backend {
+        label="后端实现"
+        style="filled,rounded"; color="#2E7D32"; fillcolor="#E8F5E9"; fontname="Helvetica Bold"
+        Llama [label="LlamaBackend (默认/内置)\nllama.cpp + Qwen2.5-0.5B GGUF\nMetal n_gpu_layers=99, n_ctx=2048", fillcolor="#C8E6C9"]
+        Lite [label="LiteLLMBackend (可选/远程)\nOpenAI 兼容 /v1/chat/completions", fillcolor="#C8E6C9"]
+    }
+
+    {Swift HTTP MCP} -> NLT
+    NLT -> MM [label="currentBackend()"]
+    MM -> IBackend
+    IBackend -> Llama
+    IBackend -> Lite
+}
+```
+
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| `IModelBackend` | `IModelBackend.h` | 后端接口：`chat()` / `embed()` / `isAvailable()` / `modelName()` |
+| `LlamaBackend` | `LlamaBackend.{h,cpp}` | **内置默认**：llama.cpp 加载本地 GGUF，Metal GPU 推理 |
+| `LiteLLMBackend` | `LiteLLMBackend.{h,cpp}` | **可选远程**：OpenAI 兼容 HTTP API（手写 JSON，无 JSON 库） |
+| `ModelManager` | `ModelManager.{h,cpp}` | 扫描模型目录、异步加载、热切换 |
+| `NLTranslator` | `NLTranslator.{h,cpp}` | 翻译管线：prompt 组装 + 透传 + 清洗 |
+
+### LlamaBackend：本地 GGUF 推理
+
+```cpp
+// loadModel(ggufPath)：
+mparams.n_gpu_layers = 99;     // 全部 offload 到 Metal GPU
+cparams.n_ctx = 2048;          // 上下文窗口
+cparams.n_batch = 2048;
+ggml_set_abort_callback(...);  // 可中断
+// chat()：llama_chat_apply_template 两遍定长 → tokenize（负值重试）
+//         → n_ctx 溢出保护 → llama_memory_clear → decode prompt
+//         → sampler chain（temp<=0 走 greedy，否则 temp+dist）
+//         → 生成循环（EOG 终止）→ token_to_piece 拼接
+```
+
+全程 `mutex_` 保护，模型名形如 `local:qwen2.5-0.5b`。`vendor/llama.cpp` 随源码 vendored，编译进 app。
+
+### LiteLLMBackend：可选远程后端
+
+标准 OpenAI chat completion 协议：`POST /v1/chat/completions`，连接超时 5s、读超时 30s。手写 `jsonEscape` / `parseChatResponse`（扫描 `"content":"..."`），不引入 JSON 库，与项目「零外部依赖」风格一致。`isAvailable()` 探测 `/health`，模型名形如 `remote:host:port`。
+
+### NLTranslator：翻译管线
+
+```dot
+// NLTranslator::translate() 管线
+digraph nlt {
+    rankdir=LR
+    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10]
+    edge [fontname="Helvetica", fontsize=9]
+
+    In [label="自然语言\n\"最近的大 PDF\"", shape=ellipse, fillcolor="#E3F2FD", style=filled]
+    Trim [label="trim + clamp\ntemp∈[0,2]", fillcolor="#BBDEFB"]
+    PT [label="looksLikeQuerySyntax?\n已是语法 → 透传", shape=diamond, fillcolor="#FFF9C4"]
+    Build [label="buildMessages\nsystem + few-shot + user", fillcolor="#C8E6C9"]
+    Chat [label="backend->chat\n(temp=0 默认确定性)", fillcolor="#FFE0B2"]
+    Clean [label="cleanLLMResponse\n去 ```fence / 前缀 / 引号\n仅取首行", fillcolor="#F8BBD0"]
+    Out [label="ext:pdf size:>10mb\ndm:last7days", shape=ellipse, fillcolor="#A5D6A7", style=filled]
+
+    In -> Trim -> PT
+    PT -> Out [label="是（passthrough）"]
+    PT -> Build [label="否"]
+    Build -> Chat -> Clean -> Out
+}
+```
+
+要点：
+
+- **语法透传**：若输入已是合法查询语法（`looksLikeQuerySyntax()` 检测 30 个已知 filter 前缀如 `ext:`/`size:`/`path:`/`dm:`/`content:`/`regex:`…），直接返回，不调模型——既省推理又避免「翻译已合法语法」的退化。
+- **few-shot prompt**：内置默认 system prompt（查询语法参考 + 9 条规则，含中文意图映射"最近"→`dm:last7days`、"大文件"→`size:>100mb`、类型宏）+ 12 对 few-shot 示例（含 `abc`/`readme`/`config.json`/`hello world` 等直通样例）。
+- **外置 prompt 文件**：支持从 `prompt.txt` 加载，用 `<SYSTEM_PROMPT>` / `<FEW_SHOT>`（`user:`/`assistant:` 配对）标签解析；`promptSource()` 报告当前使用内置还是文件。优先加载用户级 prompt，缺失则回退到 app bundle 内置 prompt（`ServiceEngine.cpp:34`）。
+- **响应清洗**：`cleanLLMResponse()` 剥离 ```` ```fence ````、`Query:`/`Result:`/`Output:`/`查询:` 等前缀、首尾引号，并只取首行——小模型常带解释性废话，清洗保证输出是纯查询串。
+- **确定性默认**：默认 `temperature=0`（greedy），同一自然语言输入稳定产出同一查询；并记录 build/infer/clean/total 各阶段耗时日志。
+
+### 集成与生命周期
+
+- **ServiceEngine** 启动时 `ModelManager(modelsDir).loadAsync(...)`，后台线程扫描 `*.gguf`、**优先选名字含 "qwen" 的模型**、加载成功后构造 `NLTranslator(backend)` 并加载 prompt。加载是异步的，**不阻塞**主搜索功能——模型没就绪时 AI 端点返回 503，文件搜索照常工作。
+- **HttpServer** 通过 `setAIGetters()` 注入 `getNLTranslator_` / `getModelManager_` 弱获取器，暴露：
+  - `GET  /api/ai/status` — 模型是否就绪、当前模型名
+  - `GET  /api/ai/prompt` — 当前 prompt 来源/内容
+  - `POST /api/ai/translate` — 自然语言 → 查询语法（核心端点）
+- **MCP server**（`mcp_main`）把翻译+搜索暴露为 MCP 工具，供 Claude 等 agent 直接调用 MacEverything。
+
+---
+
+## 15. 性能演进数据
+
+### 查询延迟演进（早期 29 轮基准测试，历史轨迹）
+
+> 下图是项目早期（4.86M 数据集）的优化轨迹，体现四次架构范式跃迁。当前运行时延迟以最新 R108 电池为准（见 §5 路径对比与本节末「运行时稳定性」）。
 
 ```
 延迟 (ms)
@@ -1045,7 +1330,7 @@ thread_local uint8_t trigramBitmap[1 << 24 / 8];  // 2MB per thread
     R1    R5    R10   R15   R20   R24   R29
 ```
 
-**17x 延迟降低，四次范式跃迁：**
+**17x 延迟降低，多次范式跃迁：**
 
 | 阶段 | 关键变更 | 效果 |
 |------|---------|------|
@@ -1053,6 +1338,8 @@ thread_local uint8_t trigramBitmap[1 << 24 / 8];  // 2MB per thread
 | SoA 列式 + SIMD | 35ms → 10.5ms | 人类架构决策 |
 | Node-Centric Query | 路径查询 1522x 提升 | 人类架构决策 |
 | v6 Flat 持久化 | 启动 250x 提升（50s→200ms） | 人类架构决策 |
+| ShortQueryCache（2026-05） | 1-2 字符 57.8ms → 0.37ms（~150x） | §9，预算缓存 |
+| 内置 LLM NL 搜索（2026-05） | 自然语言 → 查询语法 | §14，llama.cpp 自包含 |
 
 ### 启动时间演进
 
@@ -1071,9 +1358,30 @@ Trigram 副本      per-record trigram vector  → 共享倒排索引
 总内存（4.86M）   ~1GB+                     → ~300MB
 ```
 
+### 运行时稳定性观测（R100+ 长跑，架构师重点关注）
+
+近期持续性能巡检（`docs/performance_ana/R_*.md`，每 30min 一轮）在**长时间运行**下暴露了与单次查询延迟无关的**运行时退化**问题，是当前架构改进的主战场：
+
+| 观测项 | R108（2026-05-30 22:11，运行 ~80min）数据 | 趋势/含义 |
+|--------|-------------------------------------------|-----------|
+| 索引规模 | total 6,183,351 / live 5,412,386 | — |
+| **Tombstone 比例** | **770,965（12.47%）** | 连续 35 轮单调上升；距 R43 崩溃参考 12.97% 仅 ~0.5pp |
+| Tombstone 增量 | +15,189 / 30min（连续 2 轮 taper 至 14-15K） | 即使 taper，**~1h 即触崩溃线** |
+| Flush 次数 / compaction | 16 次 flush，**0 次 compaction**，0 reclaim | 见下「R67 阀门」 |
+| Flush rewrite 耗时（暖态） | 3-7s（启动期 24-30s） | 每次全量重写，含 771K 死记录 |
+| 慢查询（>100ms） | 158 条，中位 214ms，0 条 organic 越线 | 暖态电池极洁净 |
+
+**两个根因性问题（P0）：**
+
+1. **R67 Flush 比例阀永不触发（compaction 死锁）**：自适应 compaction 的 tombstone 比例阀设为 25%（`kTombstoneCompactRatio`），但实际运行中 tombstone 在到达 25% 之前，约 **12.97%** 就已触发崩溃参考。换言之**比例阀阈值高于可达上限，全量 compaction 永远不会自动触发**——tombstone 只增不减，每次 flush 都在重写越来越多的死记录（R108 已达 771K 死记录/次）。这是「flush rewrite-bloat 恶性循环」。**修复方向**：阈值下调至 8-10%，并调换比例检查与 flush 的顺序。
+
+2. **Flush 持锁全量重写**：16 次 flush 全程持写锁 3-30s，期间查询被阻塞（历史 P23：flush 期间查询飙至 547ms）。**修复方向**：COW 无锁快照 flush（复用 §12 compaction 的三阶段 COW 思路），配合 R67 修复消除死记录重写。
+
+> 这两点是架构师规划下一阶段改进的**最高优先级**——它们不是单次查询的算法问题，而是「长时间运行下索引健康度无法自维持」的系统性缺陷。详细逐轮证据见 `docs/performance_ana/`。
+
 ---
 
-## 14. 竞品对比与差异化
+## 16. 竞品对比与差异化
 
 ### 核心竞品对比
 
@@ -1083,9 +1391,11 @@ Trigram 副本      per-record trigram vector  → 共享倒排索引
 | 搜索算法 | 线性扫描（<100MB 索引） | Trigram 交集 | Rabin-Karp | Trigram + SIMD |
 | 实时更新 | USN Journal | updatedb cron | FSEvents | FSEvents + WAL |
 | 启动速度 | 即时（常驻） | N/A（CLI） | 未知 | 200ms (Phase 1) |
-| 搜索延迟 | <1ms（内存带宽） | ~8ms（27M 文件） | 未知 | ~10.5ms（4.86M 文件） |
+| 搜索延迟 | <1ms（内存带宽） | ~8ms（27M 文件） | 未知 | 0.4ms（短查询）/ ~10-20ms（trigram，6.18M 文件） |
 | UI | 原生 Win32 | CLI | Tauri (Web) | 原生 SwiftUI |
-| 持久化 | MFT 即索引 | 自定义二进制 | mmap slab | v6 Flat + WAL |
+| 持久化 | MFT 即索引 | 自定义二进制 | mmap slab | v6 Flat + WAL + .sqcache |
+| 自然语言搜索 | 无 | 无 | 无 | **内置 llama.cpp（NL→查询语法）** |
+| Agent 集成 | 无 | 无 | 无 | **HTTP API + MCP server** |
 
 ### macOS 市场差异化
 
@@ -1097,14 +1407,15 @@ Trigram 副本      per-record trigram vector  → 共享倒排索引
 
 **MacEverything 的差异化：**
 1. 原生 SwiftUI UI（非 Electron/Tauri）
-2. sub-100ms 全盘文件名搜索
+2. sub-100ms 全盘文件名搜索（短查询 0.4ms）
 3. 轻量级持久化索引 + 实时 FSEvents 更新
-4. CLI daemon 模式 + HTTP API（可集成到其他工具）
+4. CLI daemon 模式 + HTTP API + MCP server（可集成到 agent / 其他工具）
 5. 完整的 Everything 兼容查询语法
+6. **内置 LLM 自然语言搜索**（捆绑 GGUF，无需外部运行时，离线可用）——「输入法」式翻译，不牺牲精确搜索的速度与可解释性
 
 ---
 
-## 15. 设计得失与已知问题
+## 17. 设计得失与已知问题
 
 ### 做对了的设计决策
 
@@ -1131,10 +1442,10 @@ Trigram 副本      per-record trigram vector  → 共享倒排索引
 
 ### 设计上的不足
 
-**1. Trigram 3 字符最低限制**
-- 1-2 字符查询回退线性扫描，CJK 短词查询（如"桌面"）延迟 ~181ms
-- 竞品方案：2-gram（内存翻倍）、SIMD 暴力搜索（Everything 方案）
-- 改进方向：对 <3 字符查询使用 SIMD 快速路径
+**1. Trigram 3 字符最低限制（ASCII 已解决，CJK 待解决）**
+- ASCII 1-2 字符查询：**已由 ShortQueryCache 解决**（§9，57.8ms → 0.37ms），702 个预算键覆盖全部 `a`…`zz`
+- CJK 短词查询（如"桌面"、"中文"）：**仍待解决**——CJK 双字不在 ASCII 缓存键内，trigram 也几乎无 CJK 覆盖，回退线性扫描 ~135ms
+- 改进方向：CJK trigram 索引 或 2-gram（内存翻倍）
 
 **2. 路径存储冗余**
 - 同时维护 pathPool_ 和 lowerPathPool_ 两份路径数据
@@ -1152,55 +1463,80 @@ Trigram 副本      per-record trigram vector  → 共享倒排索引
 
 ### 已知性能问题（高优先级）
 
+**运行时稳定性（P0，长跑根因性问题，详见 §15「运行时稳定性观测」）：**
+
+| ID | 问题 | 影响 | 根因 | 修复方向 |
+|----|------|------|------|---------|
+| **R67** | **Compaction 比例阀永不触发** | tombstone 单调增至 12.47%，~1h 触崩溃线 | 比例阀阈值 25% 高于可达上限（~12.97%），全量 compaction 从不自动触发 | 阈值下调至 8-10% + 调换比例检查/flush 顺序 |
+| **Flush** | **Flush 持锁全量重写** | flush 期间查询阻塞 3-30s（历史 547ms 飙升） | flush 持写锁重写整个 v6（含 771K 死记录） | COW 无锁快照 flush（复用 §12 三阶段 COW） |
+
+**单次查询（中优先级）：**
+
 | ID | 问题 | 影响 | 根因 | 修复方向 |
 |----|------|------|------|---------|
 | P24 | case-sensitive 查询跳过 trigram | 631ms | 大小写 trigram 独立，`case:README` 无法用小写 trigram | 一行修复：case query 也用小写 trigram 预过滤 |
-| P23 | flush 期间查询延迟飙升 | 547ms | flush 持有写锁时阻塞查询 | flush 分步化或 COW flush |
-| P22 | CJK 2 字符查询线性扫描 | 181ms | trigram 最少需要 3 字节 | SIMD 快速路径 or 2-gram |
+| P22 | CJK 2 字符查询线性扫描 | ~135ms | CJK 不在 ASCII short-query-cache 键内，trigram 无 CJK 覆盖 | CJK trigram 索引 or 2-gram |
+| P-pure | 纯过滤查询全量 SoA 扫描 | size:/dm:/content: 50-210ms | 无索引，逐记录 SIMD 求值 | 数值/日期辅助索引 |
+
+**代码健康度（架构师改进项）：**
+
+- `SearchEngineAdvancedQuery.cpp` **1091 行**，超出项目「单文件 ≤1000 行」规范（CLAUDE.md §4）。该文件同时承载 `advanced-trigram` 求值、`advanced-linear-gcd` 线性扫描、`pure-filter-soa-gcd` 纯过滤三条热路径。建议按搜索路径拆分为独立编译单元，便于维护与针对性优化。
 
 ---
 
-## 16. 演化方向
+## 18. 演化方向
 
 ### 短期优化（预期收益高）
 
-1. **Case-sensitive trigram 预过滤（P24）**
+1. **🔥 R67 Compaction 比例阀修复（最高优先级）**
+   - tombstone 比例阀阈值从 25% 下调至 8-10%，并调换比例检查与 flush 的执行顺序
+   - 解决「tombstone 只增不减、flush rewrite-bloat 恶性循环」——当前 ~1h 触崩溃线
+   - 是长跑稳定性的根本修复，详见 §15/§17
+
+2. **🔥 COW 无锁快照 Flush**
+   - flush 复用 §12 compaction 的三阶段 COW：shared_lock 快照 → 无锁重写 → unique_lock swap
+   - 消除 flush 期间 3-30s 查询阻塞（历史 P23 547ms 飙升）
+   - 配合 R67 修复，停止重写死记录
+
+3. **Case-sensitive trigram 预过滤（P24）**
    - 对 `case:README` 查询，先用小写 trigram 缩小候选集，再做大小写敏感匹配
    - 预计：631ms → <10ms，一行代码修复
 
-2. **短查询 SIMD 加速**
-   - 对 <3 字符查询，直接 SIMD 扫描 namePool_
-   - 预计：4-8x 提升（借助 SoA 布局 + NEON 已有基础设施）
+4. **SearchEngineAdvancedQuery.cpp 拆分**
+   - 1091 行超规范，按 trigram / linear / pure-filter 三条热路径拆为独立单元
 
-3. **Flush 查询保护**
-   - flush 操作分步化，每步只持有短暂写锁
-   - 类似 batchMutate 的 300-op chunk 分片策略
+> 已完成（不再列为待办）：**短查询加速**已由 ShortQueryCache 落地（§9，ASCII 1-2 字符 57.8ms → 0.37ms）。
 
 ### 中期演进
 
-4. **模糊搜索（Fuzzy Matching）**
+5. **CJK trigram / 2-gram 索引（P22）**
+   - 当前 CJK 短词（"桌面"）走线性扫描 ~135ms，ShortQueryCache 仅覆盖 ASCII
+   - 为 CJK 建立 trigram 或 2-gram 倒排，补齐中文搜索短板
+
+6. **模糊搜索（Fuzzy Matching）**
    - Smith-Waterman 变体（fzf 方案），支持首字母匹配、连续匹配加分
    - 需要新的评分排序体系
 
-5. **零拷贝索引加载**
+7. **零拷贝索引加载**
    - v6 格式已经接近 mmap-ready，进一步优化为 mmap + 直接指针
    - 预计启动时间从 200ms 降到 <50ms
 
-6. **Delta 压缩 Posting List**
+8. **Delta 压缩 Posting List**
    - plocate 方案：posting list 用 delta encoding + varint 压缩
    - 内存降低 50-70%，缓存命中率提升
 
 ### 长期方向
 
-7. **中文拼音搜索**
+9. **中文拼音搜索**
    - 拼音 trigram 索引或拼音→汉字映射表
    - 参考 JARVIS Search 实现
 
-8. **语义搜索集成**
-   - 基于文件名/路径的 embedding，支持自然语言查询
+10. **语义搜索集成（embedding）**
+   - 现已有内置 LLM 的「自然语言 → 查询语法」翻译（§14）；下一步是基于文件名/路径 embedding 的真正语义检索
+   - `IModelBackend::embed()` 接口与 LiteLLMBackend 的 `/v1/embeddings` 已就位，可作为基础
    - 与现有精确搜索互补，非替代
 
-9. **分布式索引**
+11. **分布式索引**
    - 支持网络文件系统（NFS/SMB）的增量索引
    - 需要新的一致性协议
 
@@ -1230,6 +1566,13 @@ Trigram 副本      per-record trigram vector  → 共享倒排索引
 | HTTP port | 19860 | MacSearchBridge.mm | 默认 HTTP 端口 |
 | batchMutate chunk | 300 | SearchEngine.cpp | 锁分片大小 |
 | WAL fsync 间隔 | 64 entries | IndexWAL.h | 持久化写入间隔 |
+| `kTotalKeys` | 702 | ShortQueryCache.h | 短查询缓存键数（26+676） |
+| `kMaxResults` | 100 | ShortQueryCache.h | 每键缓存 Top-N |
+| `.sqcache` magic | 0x56435153 ("SQCS") v2 | ShortQueryCache.cpp | 短查询缓存文件格式 |
+| LlamaBackend `n_gpu_layers` | 99 | LlamaBackend.cpp | 全量 offload 到 Metal GPU |
+| LlamaBackend `n_ctx` | 2048 | LlamaBackend.cpp | LLM 上下文窗口 |
+| NLTranslator 默认 temperature | 0.0（greedy） | NLTranslator.cpp | 确定性翻译 |
+| LiteLLM 连接/读超时 | 5s / 30s | LiteLLMBackend.cpp | 远程后端超时 |
 
 ## 附录 B：文件组织
 
@@ -1237,39 +1580,56 @@ Trigram 副本      per-record trigram vector  → 共享倒排索引
 MacEverything/
 ├── Core/                              # C++20 核心引擎
 │   ├── SearchEngine.h                 # SoA 存储 + Trigram 索引 + 查询路由
-│   ├── SearchEngine.cpp               # 记录管理、WAL、compaction
-│   ├── SearchEngineQuery.cpp          # 查询预处理 + 路由
-│   ├── SearchEngineAdvancedQuery.cpp   # 高级查询求值（竞争候选集）
+│   ├── SearchEngine.cpp               # 记录管理、WAL、compaction、缓存增量维护
+│   ├── SearchEngineQuery.cpp          # 查询预处理 + 路由（含 short-query-cache 快路径）
+│   ├── SearchEngineAdvancedQuery.cpp   # 高级查询求值（竞争候选集）⚠ 1091 行，超规范待拆
+│   ├── SearchEngineStructuredQuery.cpp # 结构化（路径分段）查询求值
 │   ├── SearchEngineIndex.cpp          # Trigram/Extension 索引构建
-│   ├── SearchEngineV6.cpp             # v6 格式加载 + 两阶段启动
+│   ├── SearchEngineV6.cpp             # v6 格式加载 + 两阶段启动 + buildShortQueryCache
+│   ├── SearchEnginePersistence.cpp    # SearchEngine 持久化桥接
+│   ├── ShortQueryCache.h/.cpp         # 短查询缓存（702 键 Top-100，§9）
+│   ├── BoundedSortedVec.h             # 有界排序向量（缓存 Top-N 容器）
 │   ├── DirectoryScanner.h/.cpp        # getattrlistbulk 并行扫描
 │   ├── FileSystemWatcher.h/.cpp       # FSEvents 实时监控
 │   ├── ContentIndex.h/.cpp            # 内容搜索 Trigram 索引
+│   ├── ContentIndexPersistence.h/.cpp # 内容索引持久化
 │   ├── SIMDSearch.h                   # ARM NEON SIMD 字符串搜索
 │   ├── StringPool.h                   # 连续内存字符串池
-│   ├── FlatIndexWriter.h              # v6 Flat 持久化格式
-│   ├── PagedIndexWriter.h             # v5 Paged 持久化格式
+│   ├── FlatIndexWriter.h/.cpp         # v6 Flat 持久化格式
+│   ├── PagedIndexWriter.h/.cpp        # v5 Paged 持久化格式
 │   ├── IndexWAL.h/.cpp                # Write-Ahead Log
-│   ├── IndexPersistence.h             # 自适应 Compaction 编排
-│   ├── ContentIndexPersistence.h      # 内容索引持久化
-│   ├── QueryParser.h                  # 递归下降解析器
+│   ├── IndexPersistence.h/.cpp        # 自适应 Compaction 编排 + .sqcache 读写
+│   ├── QueryParser.h/.cpp             # 递归下降解析器
 │   ├── QueryTokenizer.h               # 词法分析器
 │   ├── QueryAST.h                     # AST 节点定义
 │   ├── QueryFilterParser.h            # 过滤器解析
 │   ├── QueryDateParser.h              # 日期过滤器解析
 │   ├── CompiledGlob.h                 # Glob 模式预编译
-│   ├── ServiceEngine.h/.cpp           # 生命周期编排
+│   ├── IModelBackend.h                # ── AI ── LLM 后端接口（chat/embed）
+│   ├── LlamaBackend.h/.cpp            # 内置 llama.cpp 本地 GGUF 推理
+│   ├── LiteLLMBackend.h/.cpp          # 可选远程 OpenAI 兼容后端
+│   ├── ModelManager.h/.cpp            # 模型扫描/异步加载/热切换
+│   ├── NLTranslator.h/.cpp            # 自然语言 → Everything 查询语法
+│   ├── ServiceEngine.h/.cpp           # 生命周期编排（含 AI 异步初始化）
 │   ├── ServiceEngine+FSEvents.cpp     # FSEvents 集成
 │   ├── ServiceEngine+Content.cpp      # 内容索引编排
-│   └── HttpServer.h/.cpp              # HTTP REST API
+│   └── HttpServer.h/.cpp              # HTTP REST API（含 /api/ai/*）
 ├── Bridge/                            # ObjC++ 桥接
 │   ├── MacSearchBridge.h/.mm          # C++ ↔ Foundation 类型转换
 │   └── MacSearchBridge+Content.h/.mm  # 内容搜索桥接
 ├── App/                               # SwiftUI 界面
-│   └── SearchViewModel.swift          # 搜索视图模型
-├── CLI/                               # CLI Daemon
-│   └── daemon_main.cpp                # 无头守护进程
-└── tests/                             # 87 个测试文件，11,000+ 测试用例
+│   ├── SearchViewModel.swift          # 搜索视图模型
+│   ├── AIServiceClient.swift          # AI 翻译客户端
+│   └── AISettingsView.swift           # AI 模型/prompt 设置界面
+├── CLI/                               # CLI Daemon / MCP
+│   ├── daemon_main.cpp                # 无头守护进程
+│   └── mcp_main.cpp                   # MCP server 入口
+├── ai_service/                        # Python sidecar（远程模型可选辅助）
+├── prompt.txt                         # 外置 NL 翻译 prompt（<SYSTEM_PROMPT>/<FEW_SHOT>）
+└── tests/                             # 87+ 测试文件，11,000+ 测试用例
+
+vendor/
+└── llama.cpp/                         # vendored，编译进 app（内置 LLM 推理）
 ```
 
 ## 附录 C：HTTP API
@@ -1292,6 +1652,17 @@ curl "http://localhost:19860/api/health"
 
 # 重建索引
 curl -X POST "http://localhost:19860/api/index/rebuild"
+
+# ───── AI 自然语言搜索（详见 §14）─────
+# AI 后端状态：模型是否就绪、当前后端名
+curl "http://localhost:19860/api/ai/status"
+
+# 查看当前生效的系统 Prompt（builtin 或外部 prompt.txt）
+curl "http://localhost:19860/api/ai/prompt"
+
+# 自然语言 → Everything 查询语法翻译
+curl "http://localhost:19860/api/ai/translate?q=昨天改过的大于10M的pdf"
+# → {"query": "ext:pdf dm:yesterday size:>10mb", "translated": true, "ms": 412}
 
 # 响应格式（search 示例）
 {
