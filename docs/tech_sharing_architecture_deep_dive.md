@@ -2,6 +2,8 @@
 
 > 面向工程/系统/算法同学的技术分享 | 初版 2026-04-25 · 更新 2026-05-31（R108 数据、短查询缓存、内置 LLM 自然语言搜索）
 
+![MacEverything：快速、精确、本地的全盘文件搜索引擎](images/hero-architecture.png)
+
 ---
 
 ## 目录
@@ -46,6 +48,10 @@ MacEverything 是 macOS 上的全盘文件名搜索工具，对标 Windows 平�
 ---
 
 ## 2. 整体架构
+
+![三层架构：SwiftUI App → ObjC++ Bridge → C++20 Core Engine（CLI/HTTP/MCP/Scanner/Trigram/WAL）](images/infographic-three-layer.png)
+
+> 下图为分层结构示意（概念图），紧随其后的 `graphviz` 为精确的组件依赖关系图。
 
 ```graphviz
 digraph architecture {
@@ -644,6 +650,8 @@ digraph ast_transform {
 
 trigram 索引要求查询词 ≥ 3 字符（§6）。1-2 字符的 ASCII 查询（`a`、`ab`）无法产生 trigram，早期版本只能全量线性扫描 6.18M 条记录，**持锁 ~58ms**（旧 `linear` 路径）。而这类查询恰恰是用户输入时**每键必经**的中间状态（输入 "abc" 会先后触发 "a"→"ab"→"abc"），违背「小巧精确快速」定位。
 
+![短查询缓存：702 key（26 unigram + 676 bigram）× Top-100，O(1) lookup 0.37ms，取代 57ms 线性扫描](images/infographic-short-query-cache.png)
+
 **解法**：把所有可能的 1-2 字符 ASCII 字母查询的 Top-100 结果预先算好缓存起来。26 个 unigram（`a`…`z`）+ 676 个 bigram（`aa`…`zz`）= **702 个键**，O(1) 命中。
 
 ### 数据结构（ShortQueryCache.h）
@@ -1180,6 +1188,8 @@ thread_local uint8_t trigramBitmap[1 << 24 / 8];  // 2MB per thread
 ### 定位：自然语言 → Everything 查询语法
 
 MacEverything 的查询语法（§8）功能强大但有学习成本。AI 层让用户用自然语言描述意图（"最近改的大 PDF"、"昨天下载的图片"），由一个**本地小模型**翻译成精确的 Everything 查询语法（`ext:pdf size:>10mb dm:last7days`），再交给确定性搜索引擎执行。
+
+![AI 自然语言搜索管线：NL 查询 → NLTranslator → 本地 LLM(llama.cpp+Qwen2.5-0.5B,Metal) → 清洗 → Everything 查询语法](images/infographic-ai-search.png)
 
 **关键设计原则**：AI 只做**翻译**（NL → query syntax），不做检索。检索仍由确定性的 trigram/SIMD 引擎完成。这样既获得自然语言的易用性，又保留毫秒级精确搜索的可解释性与速度——AI 是「输入法」而非「搜索引擎」。
 

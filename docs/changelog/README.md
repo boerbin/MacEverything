@@ -159,6 +159,7 @@
 | [171](171-fix-ai-stale-results.md) | bugfix | 修复 AI 模式输入时旧搜索结果残留，立即清除并显示翻译状态 | 2026-05-18 |
 | [174](174-bundle-dylibs.md) | bugfix | 打包外部 dylib（re2+abseil）进 .app 使其自包含，修复无 Homebrew 机器启动崩溃 (issue #2) | 2026-05-30 |
 | [175](175-arch-doc-refresh.md) | docs | 架构深度文档刷新：新增 ShortQueryCache(§9)/内置 LLM(§14) 章节，刷新 R108 性能数据与 R67/Flush 运行时稳定性 P0 议题，更新附录 A/B/C | 2026-05-31 |
+| [176](176-doc-illustrations.md) | docs | 文档配图：用 gpt-image-2 为架构/Agent 开发/CTR 文档生成 8 张发布级 hero+信息图（叠加不替换 dot 图），并纳入 3 个 WIP 文档至版本控制 | 2026-05-31 |
 
 ## 统计
 
