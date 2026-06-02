@@ -166,6 +166,7 @@
 | [180](180-architecture-subsystem-docs.md) | docs | 新增架构师分册 `docs/architecture/` 并校准深度分享文档到 R116：覆盖生命周期、搜索、持久化、内容索引、AI 翻译、Bridge/UI、HTTP/MCP、构建发布与数据支撑路线图 | 2026-05-31 |
 | [181](181-issue3-memory-structures-doc.md) | docs | Issue #3 内存结构分析文档 | 2026-06-01 |
 | [182](182-issue3-memory-table-examples.md) | docs | Issue #3 内存结构表格增加内容示例列 | 2026-06-02 |
+| [183](183-issue3-memory-optimization.md) | performance | Issue #3 内存优化：pathIndex/pathLookup 哈希键替换 + OOM 守卫修复，预估节省 ~480-560MB | 2026-06-03 |
 
 ## 统计
 
@@ -198,3 +199,4 @@
 | 2026-05-31 | 6 |
 | 2026-06-01 | 1 |
 | 2026-06-02 | 1 |
+| 2026-06-03 | 1 |
