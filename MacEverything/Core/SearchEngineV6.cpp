@@ -80,7 +80,7 @@ void SearchEngine::loadRecordsV6(StringPool&& origNamePool,
     pathIndex_.reserve(n);
     for (uint32_t i = 0; i < n; i++) {
         if (types_[i] == 0) continue;
-        pathIndex_[std::move(loweredPaths[i])] = i;
+        pathIndex_[pathHash(loweredPaths[i])] = i;
     }
 
     // Tombstone orphaned duplicates: records not in pathIndex_ as winners
