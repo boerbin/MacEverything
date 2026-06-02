@@ -24,6 +24,31 @@ std::string SearchEngine::makeFullPath(std::string_view path, std::string_view n
     return result;
 }
 
+uint64_t SearchEngine::pathHash(const std::string& lowerPath) {
+    uint64_t hash = 0xcbf29ce484222325ULL;
+    for (unsigned char c : lowerPath) {
+        hash ^= c;
+        hash *= 0x100000001b3ULL;
+    }
+    return hash;
+}
+
+std::string SearchEngine::reconstructLowerPath(uint32_t idx) const {
+    if (idx >= pathIndices_.size()) return {};
+    auto pathView = lowerPathPool_.view(pathIndices_[idx]);
+    auto nameView = namePool_.view(idx);
+    std::string result;
+    result.reserve(pathView.size() + 1 + nameView.size());
+    result.append(pathView);
+    result.push_back('/');
+    result.append(nameView);
+    return result;
+}
+
+bool SearchEngine::verifyPathIndex(uint64_t hash, uint32_t recordIdx, const std::string& lowerPath) const {
+    return reconstructLowerPath(recordIdx) == lowerPath;
+}
+
 uint32_t SearchEngine::internPath(const std::string& path) {
     auto it = pathLookup_.find(path);
     if (it != pathLookup_.end()) return it->second;
