@@ -165,6 +165,7 @@
 | [179](179-fix-research-image-path.md) | docs | 修复竞品分析配图断链：`docs/research/` 下文档引用应为 `../images/`（PNG 在 `docs/images/`），由 `images/` 改为 `../images/`；全量复扫 12 处引用均 OK | 2026-05-31 |
 | [180](180-architecture-subsystem-docs.md) | docs | 新增架构师分册 `docs/architecture/` 并校准深度分享文档到 R116：覆盖生命周期、搜索、持久化、内容索引、AI 翻译、Bridge/UI、HTTP/MCP、构建发布与数据支撑路线图 | 2026-05-31 |
 | [181](181-issue3-memory-structures-doc.md) | docs | Issue #3 内存结构分析文档 | 2026-06-01 |
+| [182](182-issue3-memory-table-examples.md) | docs | Issue #3 内存结构表格增加内容示例列 | 2026-06-02 |
 
 ## 统计
 
@@ -175,9 +176,9 @@
 | performance | 31 |
 | refactor | 18 |
 | test | 6 |
-| docs | 9 |
+| docs | 10 |
 | chore | 1 |
-| **合计** | **157 条 (150 个编号, 7 组重复编号各 2 条)** |
+| **合计** | **158 条 (151 个编号, 7 组重复编号各 2 条)** |
 
 ---
 
@@ -196,3 +197,4 @@
 | 2026-05-30 | 1 |
 | 2026-05-31 | 6 |
 | 2026-06-01 | 1 |
+| 2026-06-02 | 1 |

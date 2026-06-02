@@ -47,31 +47,31 @@ flowchart TD
 
 这些结构是搜索引擎的主数据，不是冗余缓存。优化方向应是压缩字段宽度、降低 tombstone 膨胀，而不是删除。
 
-| 结构 | 源码位置 | 用途 | 生命周期 | 主要公式 | 5M 示例量级 | 优化优先级 |
-|---|---|---|---|---|---:|---|
-| `origNamePool_` | `SearchEngine.h:380` | 保存原始大小写文件名，用于结果展示与 v6 持久化 | load 后常驻，compaction 重建 | `N * (avgName + sizeof(Entry))` | `5M*(20+8)=~140MB` | 中：可考虑只对需要展示的路径延迟取原名，但风险较高 |
-| `namePool_` | `SearchEngine.h:381` | 保存 lowercase 文件名，用于搜索匹配与索引构建 | load 后常驻，Phase 2/compaction 使用 | `N * (avgNameLower + sizeof(Entry))` | `~140MB` | 中：保留；可测是否能从 origName on-demand lower，但会牺牲查询速度 |
-| `pathIndices_` | `SearchEngine.h:382` | 每条记录指向唯一目录路径 | 常驻 | `N * 4B` | `~20MB` | 低：已经紧凑 |
-| `pathPool_` | `SearchEngine.h:383` | unique directory path 原文 | 常驻 | `P * (avgPath + sizeof(Entry))` | `500k*(70+8)=~39MB` | 低：路径去重方向正确 |
-| `lowerPathPool_` | `SearchEngine.h:384` | unique lowercase directory path，用于路径查询、path trigram | 常驻 | `P * (avgPath + sizeof(Entry))` | `~39MB` | 中：可用 lazy lower / mmap / hash 辅助权衡内存与 path 搜索速度 |
-| `types_` | `SearchEngine.h:387` | 文件类型与 tombstone 标记 | 常驻 | `N * 1B` | `~5MB` | 低 |
-| `sizes_` | `SearchEngine.h:388` | 文件大小过滤 | 常驻 | `N * 8B` | `~40MB` | 中：可评估 varint / 分桶 / 32-bit 快路径，但会增加复杂度 |
-| `modTimes_` | `SearchEngine.h:389` | 修改时间过滤、recent cache | 常驻 | `N * 8B` | `~40MB` | 中：可评估 32-bit delta/epoch 压缩 |
-| `inodes_` | `SearchEngine.h:390` | FSEvents / 去重 / 持久化身份 | 常驻 | `N * 8B` | `~40MB` | 中：如仅特定路径需要，可评估稀疏化，但风险需验证 |
-| `devIds_` | `SearchEngine.h:391` | 设备 ID，与 inode 组合唯一身份 | 常驻 | `N * 4B` | `~20MB` | 低 |
-| `dirtyPages_` | `SearchEngine.h:501` | 分页持久化脏页 bitmap | 常驻 | `ceil(N/1024) * sizeof(bool/vector specialization)` | 通常 KB 级 | 低 |
+| 结构 | 源码位置 | 内容示例 | 用途 | 生命周期 | 主要公式 | 5M 示例量级 | 优化优先级 |
+|---|---|---|---|---|---|---:|---|
+| `origNamePool_` | `SearchEngine.h:380` | 连续存储: `"README.md\0Main.storyboard\0icon.png\0..."` + Entry 数组: `[{offset:0,len:9}, {offset:10,len:16}, ...]` | 保存原始大小写文件名，用于结果展示与 v6 持久化 | load 后常驻，compaction 重建 | `N * (avgName + sizeof(Entry))` | `5M*(20+8)=~140MB` | 中：可考虑只对需要展示的路径延迟取原名，但风险较高 |
+| `namePool_` | `SearchEngine.h:381` | 连续存储: `"readme.md\0main.storyboard\0icon.png\0..."` + Entry 数组（同上布局） | 保存 lowercase 文件名，用于搜索匹配与索引构建 | load 后常驻，Phase 2/compaction 使用 | `N * (avgNameLower + sizeof(Entry))` | `~140MB` | 中：保留；可测是否能从 origName on-demand lower，但会牺牲查询速度 |
+| `pathIndices_` | `SearchEngine.h:382` | `[42, 42, 42, 108, 108, 7, ...]`（同目录下文件共享同一 index） | 每条记录指向唯一目录路径 | 常驻 | `N * 4B` | `~20MB` | 低：已经紧凑 |
+| `pathPool_` | `SearchEngine.h:383` | `"/Users/wujian/Projects"`, `"/Applications/Xcode.app/Contents/Resources"` | unique directory path 原文 | 常驻 | `P * (avgPath + sizeof(Entry))` | `500k*(70+8)=~39MB` | 低：路径去重方向正确 |
+| `lowerPathPool_` | `SearchEngine.h:384` | `"/users/wujian/projects"`, `"/applications/xcode.app/contents/resources"` | unique lowercase directory path，用于路径查询、path trigram | 常驻 | `P * (avgPath + sizeof(Entry))` | `~39MB` | 中：可用 lazy lower / mmap / hash 辅助权衡内存与 path 搜索速度 |
+| `types_` | `SearchEngine.h:387` | `[0x01, 0x02, 0xFF, 0x01, ...]`（0x01=regular file, 0x02=directory, 0xFF=tombstone） | 文件类型与 tombstone 标记 | 常驻 | `N * 1B` | `~5MB` | 低 |
+| `sizes_` | `SearchEngine.h:388` | `[8192, 1048576, 0, 256, ...]`（单位 bytes） | 文件大小过滤 | 常驻 | `N * 8B` | `~40MB` | 中：可评估 varint / 分桶 / 32-bit 快路径，但会增加复杂度 |
+| `modTimes_` | `SearchEngine.h:389` | `[1717315200, 1717401600, ...]`（Unix timestamp，如 2024-06-02 00:00:00） | 修改时间过滤、recent cache | 常驻 | `N * 8B` | `~40MB` | 中：可评估 32-bit delta/epoch 压缩 |
+| `inodes_` | `SearchEngine.h:390` | `[12345678, 87654321, ...]`（文件系统 inode 号，唯一标识一个文件） | FSEvents / 去重 / 持久化身份 | 常驻 | `N * 8B` | `~40MB` | 中：如仅特定路径需要，可评估稀疏化，但风险需验证 |
+| `devIds_` | `SearchEngine.h:391` | `[16777234, 16777234, ...]`（磁盘设备号，如 APFS Volume 1） | 设备 ID，与 inode 组合唯一身份 | 常驻 | `N * 4B` | `~20MB` | 低 |
+| `dirtyPages_` | `SearchEngine.h:501` | `[false, false, true, false, true, ...]`（第 2、4 页有未持久化变更） | 分页持久化脏页 bitmap | 常驻 | `ceil(N/1024) * sizeof(bool/vector specialization)` | 通常 KB 级 | 低 |
 
 **判断**：Canonical storage 在 5M 记录下约数百 MB，属于可解释成本。若实际 RSS 接近或超过 1GB，优先看 full-path map、trigram postings 与峰值叠加，而不是先动这些列式主数据。
 
 ### 4.2 路径查找与 mutation 索引
 
-| 结构 | 源码位置 | 用途 | 生命周期 | 主要公式 | 5M 示例量级 | 优化优先级 |
-|---|---|---|---|---|---:|---|
-| `pathLookup_` | `SearchEngine.h:392` | 原始目录路径 → `pathPool_` index，用于 intern 去重 | 常驻 | `P * (avgPath + map node + bucket + string overhead)` | `~60-100MB` | 中：可用 string_view/offset-key 或 open addressing 降低节点开销 |
-| `lowerPathLookup_` | `SearchEngine.h:393` | lowercase 目录路径 → path index，辅助 lower path intern | 常驻 | 与 `pathLookup_` 类似 | `~60-100MB` | 中：可与 path pool hash 合并，避免两份 string-key map |
-| `pathIndex_` | `SearchEngine.h:394` | lowercase full path → record index；FSEvents remove/update、WAL replay、dedup last-wins 都依赖它 | 常驻，也是 load/compaction 峰值核心 | `liveFullPaths * (avgFullPath + map node + bucket + allocator)` | `~700MB-1.2GB+` | **最高**：应替换为 hash/fingerprint + collision fallback，或 pathIdx+name-key 二级索引 |
-| `sessionGenerations_` | `SearchEngine.h:519` | 每个查询 session 的取消 generation | 常驻但按 session 数缩放 | `sessionCount * (map node + shared_ptr + atomic)` | 通常 KB 级 | 低 |
-| `wal_` / `compactionGen_` | `SearchEngine.h:507-508` | WAL 追加和 compaction generation | 常驻 | 指针与 atomic | 忽略不计 | 低 |
+| 结构 | 源码位置 | 内容示例 | 用途 | 生命周期 | 主要公式 | 5M 示例量级 | 优化优先级 |
+|---|---|---|---|---|---|---:|---|
+| `pathLookup_` | `SearchEngine.h:392` | `{"/Users/wujian/Projects" → 42, "/Applications" → 7, ...}` | 原始目录路径 → `pathPool_` index，用于 intern 去重 | 常驻 | `P * (avgPath + map node + bucket + string overhead)` | `~60-100MB` | 中：可用 string_view/offset-key 或 open addressing 降低节点开销 |
+| `lowerPathLookup_` | `SearchEngine.h:393` | `{"/users/wujian/projects" → 42, "/applications" → 7, ...}` | lowercase 目录路径 → path index，辅助 lower path intern | 常驻 | 与 `pathLookup_` 类似 | `~60-100MB` | 中：可与 path pool hash 合并，避免两份 string-key map |
+| `pathIndex_` | `SearchEngine.h:394` | `{"/users/wujian/projects/readme.md" → 0, "/applications/safari.app" → 1523, ...}`（每条 live record 一个完整小写路径 key） | lowercase full path → record index；FSEvents remove/update、WAL replay、dedup last-wins 都依赖它 | 常驻，也是 load/compaction 峰值核心 | `liveFullPaths * (avgFullPath + map node + bucket + allocator)` | `~700MB-1.2GB+` | **最高**：应替换为 hash/fingerprint + collision fallback，或 pathIdx+name-key 二级索引 |
+| `sessionGenerations_` | `SearchEngine.h:519` | `{session_id_1 → generation(3), session_id_2 → generation(1)}` | 每个查询 session 的取消 generation | 常驻但按 session 数缩放 | `sessionCount * (map node + shared_ptr + atomic)` | 通常 KB 级 | 低 |
+| `wal_` / `compactionGen_` | `SearchEngine.h:507-508` | `wal_` → WAL 文件句柄指针；`compactionGen_` → `atomic<uint64_t>(5)` 表示已完成 5 轮 compaction | WAL 追加和 compaction generation | 常驻 | 指针与 atomic | 忽略不计 | 低 |
 
 `pathIndex_` 的证据链：
 
@@ -81,14 +81,14 @@ flowchart TD
 
 ### 4.3 查询加速索引
 
-| 结构 | 源码位置 | 用途 | 生命周期 | 主要公式 | 5M 示例量级 | 优化优先级 |
-|---|---|---|---|---|---:|---|
-| `nameTrigramIndex_` | `SearchEngine.h:398-400` | filename trigram → record postings，加速普通文件名搜索 | Phase 2 后常驻；新增记录增量插入 | `sum(uniqueNameTrigramsPerRecord) * 4B + map/vector overhead` | 常见为数百 MB，取决于文件名长度和字符集 | 高：可压缩 postings、分块编码、或对低选择性 trigram 做稀疏策略 |
-| `pathTrigramIndex_` | `SearchEngine.h:401-402` | path trigram → path index postings，加速路径段/斜杠查询 | Phase 2 后常驻 | `sum(uniqueTrigramsPerUniquePath) * 4B + overhead` | 可达数百 MB，随目录路径长度增长 | 高：可按需加载/按 query 热度构建、压缩 postings |
-| `pathIdxToRecords_` | `SearchEngine.h:403` | path index → 该目录下 record list；path 命中后展开到 records | Phase 2 后常驻 | `P * sizeof(vector) + liveRecords*4B` | vector object: `500k*24=~12MB` + postings `~20MB` | 中：结构本身可接受，但 `vector<vector>` 有碎片和 allocator 开销 |
-| `extensionIndex_` | `SearchEngine.h:405-406` | extension → record postings，加速 `ext:` 过滤 | Phase 2 后常驻 | `numExt * key + filesWithExt*4B + overhead` | 通常几十 MB 内 | 中：可用 interned extension id / sorted ext table |
-| `recentCache_` | `SearchEngine.h:522-531` | 最近修改 top 200 | 常驻 | `200 * sizeof(RecentEntry)` | KB 级 | 低 |
-| `ShortQueryCache` | `ShortQueryCache.h:40-49` | 1-2 字母查询 top 100 预计算结果 | Phase 2 / compaction 后常驻 | `702 * (100 * sizeof(ScoredResult) + vector object)` | 约 0.6-1MB | 低 |
+| 结构 | 源码位置 | 内容示例 | 用途 | 生命周期 | 主要公式 | 5M 示例量级 | 优化优先级 |
+|---|---|---|---|---|---|---:|---|
+| `nameTrigramIndex_` | `SearchEngine.h:398-400` | `{"rea" → [0,42,999], "ead" → [0,42,1500], "adm" → [0,55], "mai" → [3,88,204], ...}`（文件名 `readme` 产生 trigram `rea`,`ead`,`adm`,`dme`） | filename trigram → record postings，加速普通文件名搜索 | Phase 2 后常驻；新增记录增量插入 | `sum(uniqueNameTrigramsPerRecord) * 4B + map/vector overhead` | 常见为数百 MB，取决于文件名长度和字符集 | 高：可压缩 postings、分块编码、或对低选择性 trigram 做稀疏策略 |
+| `pathTrigramIndex_` | `SearchEngine.h:401-402` | `{"/us" → [0,1,2], "use" → [0,1,2], "ser" → [0,1,2], "pro" → [42,43], ...}`（路径 `/users/...` 产生的 trigram） | path trigram → path index postings，加速路径段/斜杠查询 | Phase 2 后常驻 | `sum(uniqueTrigramsPerUniquePath) * 4B + overhead` | 可达数百 MB，随目录路径长度增长 | 高：可按需加载/按 query 热度构建、压缩 postings |
+| `pathIdxToRecords_` | `SearchEngine.h:403` | `pathIdx=42 → [0, 1, 2, 55, 999]`（目录 `/Users/wujian/Projects` 下有 5 个文件，record index 分别为 0,1,2,55,999） | path index → 该目录下 record list；path 命中后展开到 records | Phase 2 后常驻 | `P * sizeof(vector) + liveRecords*4B` | vector object: `500k*24=~12MB` + postings `~20MB` | 中：结构本身可接受，但 `vector<vector>` 有碎片和 allocator 开销 |
+| `extensionIndex_` | `SearchEngine.h:405-406` | `{"md" → [0,42,100], "cpp" → [3,7,88], "swift" → [10,20], "png" → [500,501,...], ...}` | extension → record postings，加速 `ext:` 过滤 | Phase 2 后常驻 | `numExt * key + filesWithExt*4B + overhead` | 通常几十 MB 内 | 中：可用 interned extension id / sorted ext table |
+| `recentCache_` | `SearchEngine.h:522-531` | `[{recordIdx:999, modTime:1717401600}, {recordIdx:42, modTime:1717315200}, ...]`（按修改时间降序 top 200） | 最近修改 top 200 | 常驻 | `200 * sizeof(RecentEntry)` | KB 级 | 低 |
+| `ShortQueryCache` | `ShortQueryCache.h:40-49` | 查询 `"a"` → 预计算的 top 100 结果 `[{idx:0,score:95}, {idx:42,score:90}, ...]`；共 702 个 slot 覆盖所有 1-2 字符 ASCII 组合 | 1-2 字母查询 top 100 预计算结果 | Phase 2 / compaction 后常驻 | `702 * (100 * sizeof(ScoredResult) + vector object)` | 约 0.6-1MB | 低 |
 
 `nameTrigramIndex_` 和 `pathTrigramIndex_` 当前都使用 `unordered_map<Trigram, vector<uint32_t>>`。构建路径见 `MacEverything/Core/SearchEngineIndex.cpp:113-131`、`MacEverything/Core/SearchEngineIndex.cpp:241-257`。它们的 postings payload 是 `uint32_t`，但 map bucket、vector object、capacity slack、allocator metadata 也会计入 RSS。
 
@@ -96,13 +96,13 @@ flowchart TD
 
 内容索引不是默认元数据搜索的必要成本，但启用后会成为另一个大内存源。
 
-| 结构 | 源码位置 | 用途 | 生命周期 | 主要公式 | 示例量级 | 优化优先级 |
-|---|---|---|---|---|---:|---|
-| `invertedIndex_` | `ContentIndex.h:134-136` | 内容 trigram → fileIndex postings | 内容索引 load 后常驻 | `sum(uniqueContentTrigramsPerIndexedFile) * 4B + map/vector overhead` | 若 100k 文件、每文件 2k unique trigrams，payload 就约 `800MB` 前的上限风险；实际因共享 postings/文件大小限制而变化 | 高（仅内容索引场景）：posting 压缩、分段落盘、按扩展名预算 |
-| `fileInfos_` | `ContentIndex.h:138-139` | fileIndex → hash、trigram list、mtime | 内容索引常驻 | `indexedFiles * node + sum(perFileTrigrams)*4B` | 与 `invertedIndex_` 形成“正排 + 倒排”双份 trigram 元数据 | 高：可只持久化正排，运行期按需重建/分块卸载 |
-| `extensions_` | `ContentIndex.h:141-143` | 用户选择的内容索引扩展名 | 常驻 | `extCount * string/map overhead` | KB 级 | 低 |
-| `thread_local seen bitmap` | `ContentIndex.cpp:170-197` | trigram 去重 bitmap，避免每次分配 2MB | 每个调用过 extract 的线程常驻 | `2^24 bits ≈ 2MB/thread`（`vector<bool>` bitset）+ dirty vector | 几 MB 到几十 MB，随线程数 | 中：这是用内存换 CPU；总体可接受，但要计入多线程峰值 |
-| `readFileIfText` content string | `ContentIndex.cpp:138-166` | 读取待索引文件文本 | 单文件临时 | `min(fileSize, maxFileSize_)` | 默认最大 1MB/并发任务 | 中：并发 content indexing 时会叠加 |
+| 结构 | 源码位置 | 内容示例 | 用途 | 生命周期 | 主要公式 | 示例量级 | 优化优先级 |
+|---|---|---|---|---|---|---:|---|
+| `invertedIndex_` | `ContentIndex.h:134-136` | `{“inc” → [0,5,99], “#in” → [0,5,42], “clu” → [0,5,99], ...}`（源码中 `#include` 产生的 trigram 指向包含该文本的文件序号） | 内容 trigram → fileIndex postings | 内容索引 load 后常驻 | `sum(uniqueContentTrigramsPerIndexedFile) * 4B + map/vector overhead` | 若 100k 文件、每文件 2k unique trigrams，payload 就约 `800MB` 前的上限风险；实际因共享 postings/文件大小限制而变化 | 高（仅内容索引场景）：posting 压缩、分段落盘、按扩展名预算 |
+| `fileInfos_` | `ContentIndex.h:138-139` | `fileIdx=5 → {hash:”a3f8b2...”, trigrams:[trigram1, trigram2, ...], mtime:1717315200}`（正排索引：每文件的内容指纹+trigram 列表+修改时间） | fileIndex → hash、trigram list、mtime | 内容索引常驻 | `indexedFiles * node + sum(perFileTrigrams)*4B` | 与 `invertedIndex_` 形成”正排 + 倒排”双份 trigram 元数据 | 高：可只持久化正排，运行期按需重建/分块卸载 |
+| `extensions_` | `ContentIndex.h:141-143` | `{“cpp”, “h”, “swift”, “md”, “py”}`（用户配置的”对这些扩展名的文件建立内容索引”） | 用户选择的内容索引扩展名 | 常驻 | `extCount * string/map overhead` | KB 级 | 低 |
+| `thread_local seen bitmap` | `ContentIndex.cpp:170-197` | `[0,0,1,0,0,0,1,...]`（2^24=16M bit 位图，第 i 位=1 表示 trigram i 已在当前文件中出现过，用于去重） | trigram 去重 bitmap，避免每次分配 2MB | 每个调用过 extract 的线程常驻 | `2^24 bits ≈ 2MB/thread`（`vector<bool>` bitset）+ dirty vector | 几 MB 到几十 MB，随线程数 | 中：这是用内存换 CPU；总体可接受，但要计入多线程峰值 |
+| `readFileIfText` content string | `ContentIndex.cpp:138-166` | `”#include <iostream>\nint main() {\n    std::cout << \”Hello\”;\n}\n”`（读入的文件原始文本，最大截断到 maxFileSize） | 读取待索引文件文本 | 单文件临时 | `min(fileSize, maxFileSize_)` | 默认最大 1MB/并发任务 | 中：并发 content indexing 时会叠加 |
 
 内容索引还有两个明显临时结构：
 
@@ -111,19 +111,19 @@ flowchart TD
 
 ## 6. 启动、持久化、压缩的瞬时峰值表
 
-| 阶段 | 临时结构 | 源码位置 | 峰值公式 | 风险判断 | 优化方向 |
-|---|---|---|---|---|---|
-| 初扫 `DirectoryScanner` | `threadResults_` per-thread `vector<FileRecord>` | `DirectoryScanner.h:58`、`DirectoryScanner.cpp:50-53` | `N * (2 std::string object + metadata + path/name payload/capacity)` | 高：初扫期间和后续 load 可能重叠 | 流式导入 SearchEngine，或 per-directory path interning 后再 push |
-| 初扫 `DirectoryScanner` | 每线程 1MB getattr buffer | `DirectoryScanner.cpp:13`、`DirectoryScanner.cpp:87-89` | `numThreads * 1MB`，线程上限 32 | 中低：最多约 32MB | 保留；这是 I/O 性能换内存，收益明确 |
-| 初扫 merge | `takeResults()` merged vector | `DirectoryScanner.cpp:71-84` | per-thread results + merged vector 同时存在 | 高：百万级记录有双份 vector 窗口 | 使用 move range 仍需要 merged capacity；可改为逐块 load |
-| v6 load | `loweredPaths(n)` | `SearchEngineV6.cpp:53-83` | `N * std::string object + liveFullPathPayload` | 高：随后还进入 `pathIndex_` | 避免先建完整 vector；直接分块构建 hash-key index |
-| v6 Phase 2 | snapshot copies | `SearchEngineV6.cpp:152-169` | `types + modTimes + namePool + lowerPathPool + pathIndices` copy | 高：与 live storage 同时存在 | 分阶段构建、只复制必要列、使用 immutable shared snapshot |
-| v6 Phase 2 | rebuilt indices | `SearchEngineV6.cpp:174-198` | name trigram + path trigram + pathIdxToRecords + extension + recent | 高：历史 changelog 指出约 `800B/record` 级别 | 修正估算、预算门控、分块/压缩 postings |
-| COW compaction | full snapshot | `SearchEngine.cpp:590-618` | SoA + pools + `pathIndex_` copy | 很高：`pathIndex_` 被完整复制 | compaction 前先消除 string-key `pathIndex_`，或增量 compaction |
-| COW compaction | compacted copy + rebuilt indexes | `SearchEngine.cpp:630-690` | compacted SoA/pools/maps + all indices | 很高：旧、快照、新三套短暂共存 | 限制 compaction 条件、分代回收、先落盘再换指针 |
-| full rewrite | `snapshotForV6()` | `FlatIndexWriter.cpp:156-158`、`SearchEngineV6.cpp:255-270` | v6 snapshot copy of pools and arrays | 中高：紧接 compaction 后又复制主数据 | writer 支持 shared/move snapshot 或 page-by-page stream |
-| content prune | `validFileIndices` | `ServiceEngine+Content.cpp:31-47` | `totalRecords` hash set | 中：内容索引启动时突增 | 改为 bitmap/vector bool，或让 ContentIndex 按类型回调验证 |
-| content indexing | `vector<FileEntry>` | `ServiceEngine+Content.cpp:82-115` | `regularFiles * (fullPath string + idx + mtime)` | 中高：全量内容索引首次运行明显 | 分批枚举 + bounded queue，不一次 staging 全部 full paths |
+| 阶段 | 临时结构 | 内容示例 | 源码位置 | 峰值公式 | 风险判断 | 优化方向 |
+|---|---|---|---|---|---|---|
+| 初扫 `DirectoryScanner` | `threadResults_` per-thread `vector<FileRecord>` | 线程 0: `[{name:"README.md", path:"/Users/wujian/Projects", inode:123, size:8192, ...}, ...]`；每条 FileRecord 持有两个 `std::string` 独立拷贝 | `DirectoryScanner.h:58`、`DirectoryScanner.cpp:50-53` | `N * (2 std::string object + metadata + path/name payload/capacity)` | 高：初扫期间和后续 load 可能重叠 | 流式导入 SearchEngine，或 per-directory path interning 后再 push |
+| 初扫 `DirectoryScanner` | 每线程 1MB getattr buffer | `char attrBuf[1048576]`（用于 `getattrlistbulk` 系统调用，一次批量读取目录下多个文件的 inode/size/mtime 等属性） | `DirectoryScanner.cpp:13`、`DirectoryScanner.cpp:87-89` | `numThreads * 1MB`，线程上限 32 | 中低：最多约 32MB | 保留；这是 I/O 性能换内存，收益明确 |
+| 初扫 merge | `takeResults()` merged vector | 把线程 0..N 的 `vector<FileRecord>` 逐个 `std::move` 合入一个总 vector；合并期间旧 vector 壳和新 vector 同时存在 | `DirectoryScanner.cpp:71-84` | per-thread results + merged vector 同时存在 | 高：百万级记录有双份 vector 窗口 | 使用 move range 仍需要 merged capacity；可改为逐块 load |
+| v6 load | `loweredPaths(n)` | `["users/wujian/projects/readme.md", "/users/wujian/projects/main.cpp", ...]`（N 个完整小写路径 string，随后逐条移入 `pathIndex_` map） | `SearchEngineV6.cpp:53-83` | `N * std::string object + liveFullPathPayload` | 高：随后还进入 `pathIndex_` | 避免先建完整 vector；直接分块构建 hash-key index |
+| v6 Phase 2 | snapshot copies | 对 `types_`、`modTimes_`、`namePool_`、`lowerPathPool_`、`pathIndices_` 各做一份完整深拷贝，与 live 数据并存 | `SearchEngineV6.cpp:152-169` | `types + modTimes + namePool + lowerPathPool + pathIndices` copy | 高：与 live storage 同时存在 | 分阶段构建、只复制必要列、使用 immutable shared snapshot |
+| v6 Phase 2 | rebuilt indices | 从 snapshot 构建 `nameTrigramIndex_`、`pathTrigramIndex_`、`pathIdxToRecords_`、`extensionIndex_`、`recentCache_`，全部为新分配的 map/vector | `SearchEngineV6.cpp:174-198` | name trigram + path trigram + pathIdxToRecords + extension + recent | 高：历史 changelog 指出约 `800B/record` 级别 | 修正估算、预算门控、分块/压缩 postings |
+| COW compaction | full snapshot | `snapPathIndex = pathIndex_`（整个 unordered_map 深拷贝，含全部 string key）；同时拷贝 SoA 各列和 StringPool | `SearchEngine.cpp:590-618` | SoA + pools + `pathIndex_` copy | 很高：`pathIndex_` 被完整复制 | compaction 前先消除 string-key `pathIndex_`，或增量 compaction |
+| COW compaction | compacted copy + rebuilt indexes | 创建 compacted SoA（剔除 tombstone 后的紧凑数组）+ 重建全部 trigram/extension/path 索引；此时旧数据、快照、新数据三套共存 | `SearchEngine.cpp:630-690` | compacted SoA/pools/maps + all indices | 很高：旧、快照、新三套短暂共存 | 限制 compaction 条件、分代回收、先落盘再换指针 |
+| full rewrite | `snapshotForV6()` | 将当前 pools 和 SoA 数组再做一份深拷贝用于 v6 格式写出，紧接 compaction 完成后触发 | `FlatIndexWriter.cpp:156-158`、`SearchEngineV6.cpp:255-270` | v6 snapshot copy of pools and arrays | 中高：紧接 compaction 后又复制主数据 | writer 支持 shared/move snapshot 或 page-by-page stream |
+| content prune | `validFileIndices` | `unordered_set<uint32_t>{0, 1, 5, 42, ...}`（遍历所有 record 找出仍存在的 file index，用于 prune 内容索引中已删除文件的残留条目） | `ServiceEngine+Content.cpp:31-47` | `totalRecords` hash set | 中：内容索引启动时突增 | 改为 bitmap/vector bool，或让 ContentIndex 按类型回调验证 |
+| content indexing | `vector<FileEntry>` | `[{idx:0, path:"/Users/wujian/Projects/main.cpp", mtime:1717315200}, {idx:5, path:"/Users/wujian/readme.md", ...}, ...]`（所有待索引普通文件的 full path staging 列表） | `ServiceEngine+Content.cpp:82-115` | `regularFiles * (fullPath string + idx + mtime)` | 中高：全量内容索引首次运行明显 | 分批枚举 + bounded queue，不一次 staging 全部 full paths |
 
 ## 7. 优化建议（按收益/风险排序）
 
