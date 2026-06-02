@@ -50,12 +50,12 @@ bool SearchEngine::verifyPathIndex(uint64_t hash, uint32_t recordIdx, const std:
 }
 
 uint32_t SearchEngine::internPath(const std::string& path) {
-    auto it = pathLookup_.find(path);
+    auto it = pathLookup_.find(pathHash(path));
     if (it != pathLookup_.end()) return it->second;
     uint32_t pIdx = pathPool_.append(path);
     lowerPathPool_.append(me::toLower(path));
-    pathLookup_[path] = pIdx;
-    lowerPathLookup_[me::toLower(path)] = pIdx;
+    pathLookup_[pathHash(path)] = pIdx;
+    lowerPathLookup_[pathHash(me::toLower(path))] = pIdx;
     return pIdx;
 }
 
@@ -255,8 +255,8 @@ void SearchEngine::loadRecordsV5(std::vector<FileRecord>&& records,
     lowerPathLookup_.reserve(pathPool_.entryCount());
     for (uint32_t i = 0; i < pathPool_.entryCount(); i++) {
         if (pathPool_.isLive(i)) {
-            pathLookup_[pathPool_.str(i)] = i;
-            lowerPathLookup_[lowerPathPool_.str(i)] = i;
+            pathLookup_[pathHash(pathPool_.str(i))] = i;
+            lowerPathLookup_[pathHash(lowerPathPool_.str(i))] = i;
         }
     }
 
@@ -663,8 +663,8 @@ std::unordered_map<uint32_t, uint32_t> SearchEngine::compactRecords() {
     cdPathIndices.reserve(snapSize);
     StringPool cdPathPool;
     StringPool cdLowerPathPool;
-    std::unordered_map<std::string, uint32_t> cdPathLookup;
-    std::unordered_map<std::string, uint32_t> cdLowerPathLookup;
+    std::unordered_map<uint64_t, uint32_t> cdPathLookup;
+    std::unordered_map<uint64_t, uint32_t> cdLowerPathLookup;
     std::unordered_map<uint64_t, uint32_t> cdPathIndex;
     cdPathIndex.reserve(snapSize);
 
@@ -680,14 +680,14 @@ std::unordered_map<uint32_t, uint32_t> SearchEngine::compactRecords() {
         remap[static_cast<uint32_t>(i)] = newIdx;
         // Intern path into compacted pool (both original and lowered)
         uint32_t newPIdx;
-        auto cdPlIt = cdPathLookup.find(origPath);
+        auto cdPlIt = cdPathLookup.find(pathHash(origPath));
         if (cdPlIt != cdPathLookup.end()) {
             newPIdx = cdPlIt->second;
         } else {
             newPIdx = cdPathPool.append(origPath);
             cdLowerPathPool.append(me::toLower(origPath));
-            cdPathLookup[origPath] = newPIdx;
-            cdLowerPathLookup[me::toLower(origPath)] = newPIdx;
+            cdPathLookup[pathHash(origPath)] = newPIdx;
+            cdLowerPathLookup[pathHash(me::toLower(origPath))] = newPIdx;
         }
         cdPathIndex[pathHash(fullPathLower)] = newIdx;
         // Copy name from snapshot pool into compacted pool

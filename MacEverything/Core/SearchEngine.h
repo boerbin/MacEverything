@@ -392,8 +392,8 @@ private:
     std::vector<int64_t>  modTimes_;       // modification time (Unix epoch)
     std::vector<uint64_t> inodes_;         // inode number
     std::vector<int32_t>  devIds_;         // device ID
-    std::unordered_map<std::string, uint32_t> pathLookup_; // path string -> pathPool_ index
-    std::unordered_map<std::string, uint32_t> lowerPathLookup_; // lowered path -> pathPool_ index
+    std::unordered_map<uint64_t, uint32_t> pathLookup_; // pathHash(path) -> pathPool_ index
+    std::unordered_map<uint64_t, uint32_t> lowerPathLookup_; // pathHash(lowered path) -> pathPool_ index
     std::unordered_map<uint64_t, uint32_t> pathIndex_; // pathHash(fullPath) -> record index
     std::atomic<uint32_t> liveCount_{0};
     mutable std::shared_mutex mutex_;

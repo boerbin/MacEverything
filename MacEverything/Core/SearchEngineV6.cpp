@@ -45,8 +45,8 @@ void SearchEngine::loadRecordsV6(StringPool&& origNamePool,
     lowerPathLookup_.reserve(pathPool_.entryCount());
     for (uint32_t i = 0; i < pathPool_.entryCount(); i++) {
         if (pathPool_.isLive(i)) {
-            pathLookup_[pathPool_.str(i)] = i;
-            lowerPathLookup_[lowerPathPool_.str(i)] = i;
+            pathLookup_[pathHash(pathPool_.str(i))] = i;
+            lowerPathLookup_[pathHash(lowerPathPool_.str(i))] = i;
         }
     }
 
