@@ -120,11 +120,11 @@ std::string SearchEngine::completePhase2() {
     if (!phase2Pending_.load(std::memory_order_acquire)) return {};
 
     // Check available memory before snapshot+build
-    // Measured peak: ~200B/record (snapshots ~60B + indices ~140B)
+    // Measured peak: ~800B/record (snapshots ~200B + trigram indices ~400B + path trigram ~200B)
     {
         std::shared_lock lock(mutex_);
         uint64_t recordCount = types_.size();
-        uint64_t estimatedBytes = recordCount * 200;
+        uint64_t estimatedBytes = recordCount * 800;
         uint64_t availablePages = 0;
 #ifdef __APPLE__
         vm_statistics64_data_t vmstat;
@@ -134,6 +134,9 @@ std::string SearchEngine::completePhase2() {
             availablePages = vmstat.free_count + vmstat.inactive_count;
         }
         uint64_t availableBytes = availablePages * vm_page_size;
+        LOG_INFO("SearchEngine", "Phase 2 OOM check: " << recordCount << " records, est "
+                 << (estimatedBytes >> 20) << "MB, avail ~"
+                 << (availableBytes >> 20) << "MB");
         if (availableBytes > 0 && estimatedBytes > availableBytes * 7 / 10) {
             std::string msg = "Insufficient memory for trigram index: need ~"
                 + std::to_string(estimatedBytes >> 20) + "MB but only ~"
