@@ -167,6 +167,7 @@
 | [181](181-issue3-memory-structures-doc.md) | docs | Issue #3 内存结构分析文档 | 2026-06-01 |
 | [182](182-issue3-memory-table-examples.md) | docs | Issue #3 内存结构表格增加内容示例列 | 2026-06-02 |
 | [183](183-issue3-memory-optimization.md) | performance | Issue #3 内存优化：pathIndex/pathLookup 哈希键替换 + OOM 守卫修复，预估节省 ~480-560MB | 2026-06-03 |
+| [184](184-hash-collision-tests.md) | test | 哈希碰撞与正确性测试套件：4 类 16 个测试函数，覆盖碰撞注入、变异序列、级联损坏、压缩正确性 | 2026-06-03 |
 
 ## 统计
 
