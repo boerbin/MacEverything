@@ -379,6 +379,8 @@ public:
         return pt;
     }
 
+    friend class HashCollisionTestHelper;
+
 private:
     StringPool origNamePool_;              // contiguous original-case filenames (for v6 persistence)
     StringPool namePool_;                  // contiguous lowercase filenames
