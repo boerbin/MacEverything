@@ -166,6 +166,7 @@
 | [180](180-architecture-subsystem-docs.md) | docs | 新增架构师分册 `docs/architecture/` 并校准深度分享文档到 R116：覆盖生命周期、搜索、持久化、内容索引、AI 翻译、Bridge/UI、HTTP/MCP、构建发布与数据支撑路线图 | 2026-05-31 |
 | [181](181-issue3-memory-structures-doc.md) | docs | Issue #3 内存结构分析文档 | 2026-06-01 |
 | [182](182-issue3-memory-table-examples.md) | docs | Issue #3 内存结构表格增加内容示例列 | 2026-06-02 |
+| [183](183-fix-search-input-lag.md) | perf | 修复搜索输入卡顿：缓存 highlightHints(P0)、批量 @Published 更新(P1)、打字时抑制 onIndexChanged(P2)、延迟 applyHighlighting(P3) | 2026-06-05 |
 
 ## 统计
 
@@ -198,3 +199,4 @@
 | 2026-05-31 | 6 |
 | 2026-06-01 | 1 |
 | 2026-06-02 | 1 |
+| 2026-06-05 | 1 |
