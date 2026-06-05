@@ -167,6 +167,7 @@
 | [181](181-issue3-memory-structures-doc.md) | docs | Issue #3 内存结构分析文档 | 2026-06-01 |
 | [182](182-issue3-memory-table-examples.md) | docs | Issue #3 内存结构表格增加内容示例列 | 2026-06-02 |
 | [183](183-fix-search-input-lag.md) | perf | 修复搜索输入卡顿：缓存 highlightHints(P0)、批量 @Published 更新(P1)、打字时抑制 onIndexChanged(P2)、延迟 applyHighlighting(P3) | 2026-06-05 |
+| [184](184-release-v1.4.md) | release | 发布 v1.4：搜索输入延迟修复(P0-P3)、内存优化(issue #3)、文档完善、测试增强 | 2026-06-05 |
 
 ## 统计
 
@@ -179,7 +180,8 @@
 | test | 6 |
 | docs | 10 |
 | chore | 1 |
-| **合计** | **158 条 (151 个编号, 7 组重复编号各 2 条)** |
+| release | 1 |
+| **合计** | **159 条 (152 个编号, 7 组重复编号各 2 条)** |
 
 ---
 
@@ -199,4 +201,4 @@
 | 2026-05-31 | 6 |
 | 2026-06-01 | 1 |
 | 2026-06-02 | 1 |
-| 2026-06-05 | 1 |
+| 2026-06-05 | 2 |
