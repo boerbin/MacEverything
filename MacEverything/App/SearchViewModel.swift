@@ -77,6 +77,8 @@ class SearchViewModel: ObservableObject {
 
     private var indexChangeTask: Task<Void, Never>?
     let refreshThrottle = IndexRefreshThrottle()
+    private var lastKeystrokeTime: Date = .distantPast
+    private static let typingGuardInterval: TimeInterval = 0.5
 
     static var cacheDir: String {
         let base = NSSearchPathForDirectoriesInDomains(
@@ -256,6 +258,7 @@ class SearchViewModel: ObservableObject {
         searchTask?.cancel()
         recentTask?.cancel()
         searchGeneration &+= 1
+        lastKeystrokeTime = Date()
         updateHighlightHints()
         isLoadingMore = false
         let text = searchText
@@ -498,6 +501,13 @@ class SearchViewModel: ObservableObject {
     }
 
     private func onIndexChanged() {
+        if Date().timeIntervalSince(lastKeystrokeTime) < Self.typingGuardInterval {
+            refreshThrottle.markPending()
+            if indexChangeTask == nil {
+                scheduleCooldown()
+            }
+            return
+        }
         if refreshThrottle.indexChanged() {
             performIndexRefresh()
             scheduleCooldown()

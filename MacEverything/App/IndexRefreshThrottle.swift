@@ -72,6 +72,12 @@ final class IndexRefreshThrottle {
         return false
     }
 
+    /// Externally mark changes as pending without triggering a refresh.
+    /// Used when the caller wants to defer refresh (e.g., during active typing).
+    func markPending() {
+        isPending = true
+    }
+
     private func doRefresh() {
         refreshCount += 1
         onRefresh?()
