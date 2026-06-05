@@ -283,9 +283,6 @@ public:
     /// Build the full path from a record's path and name components.
     static std::string makeFullPath(std::string_view path, std::string_view name);
 
-    /// FNV-1a hash of a lowercased full path (directory + '/' + name).
-    static uint64_t pathHash(const std::string& lowerPath);
-
     /// Resolve a record's path via pathPool_. Thread-safe (acquires shared_lock).
     /// Returns by value to prevent dangling references during concurrent compaction.
     std::string resolveRecordPath(uint32_t index) const {
@@ -392,9 +389,9 @@ private:
     std::vector<int64_t>  modTimes_;       // modification time (Unix epoch)
     std::vector<uint64_t> inodes_;         // inode number
     std::vector<int32_t>  devIds_;         // device ID
-    std::unordered_map<uint64_t, uint32_t> pathLookup_; // pathHash(path) -> pathPool_ index
-    std::unordered_map<uint64_t, uint32_t> lowerPathLookup_; // pathHash(lowered path) -> pathPool_ index
-    std::unordered_map<uint64_t, uint32_t> pathIndex_; // pathHash(fullPath) -> record index
+    std::unordered_map<std::string, uint32_t> pathLookup_; // path string -> pathPool_ index
+    std::unordered_map<std::string, uint32_t> lowerPathLookup_; // lowered path -> pathPool_ index
+    std::unordered_map<std::string, uint32_t> pathIndex_; // fullPath -> record index
     std::atomic<uint32_t> liveCount_{0};
     mutable std::shared_mutex mutex_;
 
@@ -411,12 +408,6 @@ private:
     /// Intern a directory path into pathPool_ and lowerPathPool_. Returns pathPool_ index.
     /// Deduplicates via pathLookup_. Must be called under unique_lock.
     uint32_t internPath(const std::string& path);
-
-    /// Reconstruct the lowered full path for a record (lowerPathPool dir + '/' + namePool name).
-    std::string reconstructLowerPath(uint32_t recordIdx) const;
-
-    /// Verify that a hash-keyed pathIndex entry actually matches the expected lowerPath.
-    bool verifyPathIndex(uint64_t hash, uint32_t recordIdx, const std::string& lowerPath) const;
 
     /// Tombstone a record at idx: clear SoA columns. Must be called under unique_lock.
     void tombstoneAt(uint32_t idx);
