@@ -23,13 +23,13 @@ struct ContentFileItem: Identifiable {
 @MainActor
 class SearchViewModel: ObservableObject {
     @Published var searchText: String = ""
-    @Published var displayItems: [FileItem] = []
-    @Published var totalMatches: Int = 0
+    var displayItems: [FileItem] = []
+    var totalMatches: Int = 0
     @Published var isScanning: Bool = false
     @Published var scanComplete: Bool = false
-    @Published var totalRecords: UInt32 = 0
-    @Published var queryTimeMs: Double = 0
-    @Published var isMonitoring: Bool = false
+    var totalRecords: UInt32 = 0
+    var queryTimeMs: Double = 0
+    var isMonitoring: Bool = false
     @Published var scannedCount: UInt64 = 0
     var isLoadingMore: Bool = false
     @Published var showingRecent: Bool = false
@@ -37,9 +37,9 @@ class SearchViewModel: ObservableObject {
     @Published var contentResults: [ContentFileItem] = []
     @Published var isContentIndexing: Bool = false
     @Published var contentIndexProgress: (indexed: UInt32, total: UInt32)?
-    @Published var contentIndexedCount: UInt32 = 0
-    @Published var isSyncing: Bool = false
-    @Published var isBuildingIndex: Bool = false
+    var contentIndexedCount: UInt32 = 0
+    var isSyncing: Bool = false
+    var isBuildingIndex: Bool = false
     @Published var ghostSuggestion: String? = nil
     @Published var showAISetup: Bool = false
     @Published var isAISearch: Bool = false
@@ -48,12 +48,15 @@ class SearchViewModel: ObservableObject {
     @Published var showIndexCorruptionAlert: Bool = false
     var indexCorruptionMessage: String = ""
 
-    /// Structured highlight hints extracted from the C++ query AST.
-    /// Replaces the old keyword-based approach with field-aware, mode-aware hints.
-    var highlightHints: [HighlightHint] {
+    private(set) var highlightHints: [HighlightHint] = []
+
+    private func updateHighlightHints() {
         let query = searchOptions.buildQuery(searchText)
-        guard !query.isEmpty else { return [] }
-        return bridge.parseHighlightHints(query).map { HighlightHint(from: $0) }
+        guard !query.isEmpty else {
+            highlightHints = []
+            return
+        }
+        highlightHints = bridge.parseHighlightHints(query).map { HighlightHint(from: $0) }
     }
 
     private let bridge = MacSearchBridge.shared()
@@ -74,6 +77,8 @@ class SearchViewModel: ObservableObject {
 
     private var indexChangeTask: Task<Void, Never>?
     let refreshThrottle = IndexRefreshThrottle()
+    private var lastKeystrokeTime: Date = .distantPast
+    private static let typingGuardInterval: TimeInterval = 0.5
 
     static var cacheDir: String {
         let base = NSSearchPathForDirectoriesInDomains(
@@ -113,6 +118,7 @@ class SearchViewModel: ObservableObject {
 
     private func onSearchOptionsChanged() {
         guard scanComplete, !searchText.isEmpty, !isContentSearch else { return }
+        updateHighlightHints()
         searchTask?.cancel()
         searchGeneration &+= 1
         bridge.cancelSession(Self.guiSessionId)
@@ -161,6 +167,7 @@ class SearchViewModel: ObservableObject {
         bridge.onContentIndexComplete = { [weak self] totalIndexed in
             Task { @MainActor in
                 guard let self = self else { return }
+                self.objectWillChange.send()
                 self.isContentIndexing = false
                 self.contentIndexProgress = nil
                 self.contentIndexedCount = totalIndexed
@@ -191,6 +198,7 @@ class SearchViewModel: ObservableObject {
                                 walPath: Self.walPath) { [weak self] count, didFullScan in
             Task { @MainActor in
                 guard let self = self else { return }
+                self.objectWillChange.send()
                 self.totalRecords = count
                 self.isScanning = false
                 self.scanComplete = true
@@ -213,6 +221,7 @@ class SearchViewModel: ObservableObject {
         recentTask?.cancel()
         indexChangeTask?.cancel()
         searchGeneration &+= 1
+        objectWillChange.send()
         scanComplete = false
         displayItems = []
         totalMatches = 0
@@ -249,10 +258,13 @@ class SearchViewModel: ObservableObject {
         searchTask?.cancel()
         recentTask?.cancel()
         searchGeneration &+= 1
+        lastKeystrokeTime = Date()
+        updateHighlightHints()
         isLoadingMore = false
         let text = searchText
 
         if text.isEmpty {
+            objectWillChange.send()
             totalMatches = 0
             queryTimeMs = 0
             cachedResults = []
@@ -275,6 +287,7 @@ class SearchViewModel: ObservableObject {
                     self.loadRecentFiles()
                 }
             } else {
+                objectWillChange.send()
                 displayItems = []
                 showingRecent = false
             }
@@ -292,6 +305,7 @@ class SearchViewModel: ObservableObject {
             let keyword = String(text.dropFirst(7))
             contentKeyword = keyword
             guard !keyword.isEmpty else {
+                objectWillChange.send()
                 contentResults = []
                 totalMatches = 0
                 queryTimeMs = 0
@@ -310,6 +324,7 @@ class SearchViewModel: ObservableObject {
 
             if isAISearch {
                 // AI default: NL translate → file name search (2s debounce or Enter)
+                objectWillChange.send()
                 displayItems = []
                 cachedResults = []
                 loadedCount = 0
@@ -361,6 +376,7 @@ class SearchViewModel: ObservableObject {
 
             await MainActor.run { [weak self] in
                 guard let self, self.searchGeneration == gen else { return }
+                self.objectWillChange.send()
                 self.cachedResults = results
                 self.loadedCount = firstPageCount
                 self.displayItems = items
@@ -413,6 +429,7 @@ class SearchViewModel: ObservableObject {
 
             await MainActor.run { [weak self] in
                 guard let self, self.searchGeneration == gen else { return }
+                self.objectWillChange.send()
                 self.contentResults = items
                 self.totalMatches = items.count
                 self.queryTimeMs = elapsed
@@ -449,6 +466,7 @@ class SearchViewModel: ObservableObject {
                     self?.isLoadingMore = false
                     return
                 }
+                self.objectWillChange.send()
                 self.displayItems.append(contentsOf: newItems)
                 self.loadedCount = nextEnd
                 self.isLoadingMore = false
@@ -475,6 +493,7 @@ class SearchViewModel: ObservableObject {
             }
             await MainActor.run { [weak self] in
                 guard let self, self.searchGeneration == gen else { return }
+                self.objectWillChange.send()
                 self.displayItems = items
                 self.showingRecent = true
             }
@@ -482,6 +501,13 @@ class SearchViewModel: ObservableObject {
     }
 
     private func onIndexChanged() {
+        if Date().timeIntervalSince(lastKeystrokeTime) < Self.typingGuardInterval {
+            refreshThrottle.markPending()
+            if indexChangeTask == nil {
+                scheduleCooldown()
+            }
+            return
+        }
         if refreshThrottle.indexChanged() {
             performIndexRefresh()
             scheduleCooldown()
@@ -515,6 +541,7 @@ class SearchViewModel: ObservableObject {
     }
 
     private func performIndexRefresh() {
+        objectWillChange.send()
         totalRecords = bridge.liveRecordCount()
         isMonitoring = bridge.isMonitoring
         isSyncing = bridge.isSyncing

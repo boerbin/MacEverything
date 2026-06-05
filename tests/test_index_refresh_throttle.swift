@@ -181,6 +181,20 @@ func testInitialState() {
     assertEqual(t.refreshCount, 0, "zero refreshes")
 }
 
+func testMarkPending() {
+    print("  test: markPending sets pending without triggering refresh")
+    let t = IndexRefreshThrottle()
+    t.markPending()
+    check(t.isPending, "pending should be set")
+    assertEqual(t.refreshCount, 0, "no refresh triggered")
+    check(!t.isCooldownActive, "no cooldown started")
+
+    // Verify pending is consumed on next indexChanged
+    let triggered = t.indexChanged()
+    check(triggered, "indexChanged should trigger refresh")
+    assertEqual(t.refreshCount, 1, "one refresh")
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -200,6 +214,7 @@ struct TestRunner {
         testFocusedThenUnfocusedDuringCooldown()
         testCallbackInvoked()
         testFullCycle()
+        testMarkPending()
 
         print("\nResults: \(testsPassed) passed, \(testsFailed) failed")
         if testsFailed > 0 {

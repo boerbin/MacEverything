@@ -253,6 +253,7 @@ struct HighlightedSearchField: NSViewRepresentable {
         var parent: HighlightedSearchField
         weak var textView: NSTextView?
         var isUpdatingFromSwiftUI = false
+        private var pendingHighlight: DispatchWorkItem?
         private var focusObserver: NSObjectProtocol?
 
         init(_ parent: HighlightedSearchField) {
@@ -268,6 +269,7 @@ struct HighlightedSearchField: NSViewRepresentable {
         }
 
         deinit {
+            pendingHighlight?.cancel()
             if let obs = focusObserver { NotificationCenter.default.removeObserver(obs) }
         }
 
@@ -276,7 +278,12 @@ struct HighlightedSearchField: NSViewRepresentable {
                   let textView = notification.object as? NSTextView else { return }
 
             parent.text = textView.string
-            applyHighlighting(textView)
+            pendingHighlight?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                self?.applyHighlighting(textView)
+            }
+            pendingHighlight = work
+            DispatchQueue.main.async(execute: work)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
