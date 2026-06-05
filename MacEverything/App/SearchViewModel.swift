@@ -48,12 +48,15 @@ class SearchViewModel: ObservableObject {
     @Published var showIndexCorruptionAlert: Bool = false
     var indexCorruptionMessage: String = ""
 
-    /// Structured highlight hints extracted from the C++ query AST.
-    /// Replaces the old keyword-based approach with field-aware, mode-aware hints.
-    var highlightHints: [HighlightHint] {
+    private(set) var highlightHints: [HighlightHint] = []
+
+    private func updateHighlightHints() {
         let query = searchOptions.buildQuery(searchText)
-        guard !query.isEmpty else { return [] }
-        return bridge.parseHighlightHints(query).map { HighlightHint(from: $0) }
+        guard !query.isEmpty else {
+            highlightHints = []
+            return
+        }
+        highlightHints = bridge.parseHighlightHints(query).map { HighlightHint(from: $0) }
     }
 
     private let bridge = MacSearchBridge.shared()
@@ -113,6 +116,7 @@ class SearchViewModel: ObservableObject {
 
     private func onSearchOptionsChanged() {
         guard scanComplete, !searchText.isEmpty, !isContentSearch else { return }
+        updateHighlightHints()
         searchTask?.cancel()
         searchGeneration &+= 1
         bridge.cancelSession(Self.guiSessionId)
@@ -249,6 +253,7 @@ class SearchViewModel: ObservableObject {
         searchTask?.cancel()
         recentTask?.cancel()
         searchGeneration &+= 1
+        updateHighlightHints()
         isLoadingMore = false
         let text = searchText
 
