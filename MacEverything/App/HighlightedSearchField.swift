@@ -219,6 +219,9 @@ struct HighlightedSearchField: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? HighlightedNSTextView else { return }
 
+        // During IME composition, skip all text/cursor/highlight updates to preserve composition state
+        if textView.isComposing || textView.hasMarkedText() { return }
+
         // Update text if externally changed (e.g., clear button, ghost suggestion accept)
         if textView.string != text {
             context.coordinator.isUpdatingFromSwiftUI = true
@@ -277,6 +280,11 @@ struct HighlightedSearchField: NSViewRepresentable {
             guard !isUpdatingFromSwiftUI,
                   let textView = notification.object as? NSTextView else { return }
 
+            // During IME composition, defer binding update to avoid
+            // SwiftUI re-render destroying the composition state
+            if let htv = textView as? HighlightedNSTextView, htv.isComposing { return }
+            if textView.hasMarkedText() { return }
+
             parent.text = textView.string
             pendingHighlight?.cancel()
             let work = DispatchWorkItem { [weak self] in
@@ -305,7 +313,9 @@ struct HighlightedSearchField: NSViewRepresentable {
         }
 
         func applyHighlighting(_ textView: NSTextView) {
-            guard let textStorage = textView.textStorage else { return }
+            if let htv = textView as? HighlightedNSTextView, htv.isComposing { return }
+            guard let textStorage = textView.textStorage,
+                  !textView.hasMarkedText() else { return }
             let fullRange = NSRange(location: 0, length: textStorage.length)
             let text = textStorage.string
             let font = NSFont.systemFont(ofSize: 26)
@@ -352,6 +362,24 @@ class HighlightedNSTextView: NSTextView {
     var placeholderString: String = ""
     var ghostSuggestion: String? {
         didSet { needsDisplay = true }
+    }
+
+    /// Tracks IME composition state reliably (hasMarkedText() can flicker between keystrokes)
+    var isComposing: Bool = false
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        isComposing = true
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        isComposing = false
+    }
+
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        isComposing = false
+        super.insertText(string, replacementRange: replacementRange)
     }
 
     override func keyDown(with event: NSEvent) {
