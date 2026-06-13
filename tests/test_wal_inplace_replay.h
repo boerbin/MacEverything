@@ -223,7 +223,57 @@ static void runWalInplaceReplayTests() {
         check(results3.size() == 1, "T6: 'summary' found after add");
     }
 
-    // --- Test 7: Remove non-existent path is silently ignored ---
+    // --- Test 7: WAL replay updates built short-query cache ---
+    {
+        SearchEngine engine;
+        std::vector<FileRecord> initial;
+        {
+            FileRecord r; r.type = 1; r.name = "existing.txt";
+            r.path = "/d"; r.size = 1; r.modTime = 1;
+            initial.push_back(std::move(r));
+        }
+        engine.loadRecords(std::move(initial));
+        engine.buildShortQueryCache();
+
+        QueryTimingInfo beforeTiming{};
+        auto before = engine.query("fo", 100, true, beforeTiming);
+        check(beforeTiming.searchPath == "short-query-cache", "T7: initial short query uses cache");
+        check(before.empty(), "T7: no initial 'fo' matches");
+
+        auto appDir = fs::path(tmpDir) / "WebPomodoro.app";
+        fs::create_directories(appDir / "Contents");
+        std::ofstream plist(appDir / "Contents" / "Info.plist");
+        plist << R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleDisplayName</key><string>Focus To-Do</string></dict></plist>
+)";
+        plist.close();
+
+        std::vector<WALEntry> entries;
+        {
+            WALEntry e;
+            e.op = WALOp::Add;
+            e.fullPath = tmpDir + "/WebPomodoro.app";
+            e.record.type = 5;
+            e.record.name = "WebPomodoro.app";
+            e.record.path = tmpDir;
+            e.record.size = 0;
+            e.record.modTime = 2000;
+            entries.push_back(std::move(e));
+        }
+        engine.replayWALEntries(std::move(entries));
+
+        QueryTimingInfo afterTiming{};
+        auto after = engine.query("fo", 100, true, afterTiming);
+        check(afterTiming.searchPath == "short-query-cache", "T7: replayed short query uses cache");
+        check(after.size() == 1, "T7: WAL replay inserts display alias into cache");
+        if (!after.empty()) {
+            check(engine.getRecord(after[0]).name == "WebPomodoro.app",
+                  "T7: replayed cache result is app bundle");
+        }
+    }
+
+    // --- Test 8: Remove non-existent path is silently ignored ---
     {
         SearchEngine engine;
         std::vector<FileRecord> initial;
@@ -243,8 +293,8 @@ static void runWalInplaceReplayTests() {
         }
         engine.replayWALEntries(std::move(entries));
 
-        check(engine.liveRecordCount() == 1, "T7: removing nonexistent path doesn't crash");
-        check(engine.indexForPath("/d/only.txt") != UINT32_MAX, "T7: existing record untouched");
+        check(engine.liveRecordCount() == 1, "T8: removing nonexistent path doesn't crash");
+        check(engine.indexForPath("/d/only.txt") != UINT32_MAX, "T8: existing record untouched");
     }
 
     fs::remove_all(tmpDir);

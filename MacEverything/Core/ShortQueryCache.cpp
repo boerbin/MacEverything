@@ -18,6 +18,12 @@ int ShortQueryCache::keyIndex(const std::string& key) {
     return -1;
 }
 
+namespace {
+
+constexpr char kSearchAliasSeparator = '\x1F';
+
+}
+
 uint8_t ShortQueryCache::termQuality(const char* name, uint16_t nameLen,
                                       const char* term, size_t termLen) {
     if (nameLen == termLen && memcmp(name, term, nameLen) == 0) return 0;
@@ -31,10 +37,25 @@ uint8_t ShortQueryCache::termQuality(const char* name, uint16_t nameLen,
     return 3;
 }
 
+uint8_t ShortQueryCache::bestAliasTermQuality(const char* name, uint16_t nameLen,
+                                               const char* term, size_t termLen) {
+    uint8_t best = 3;
+    size_t start = 0;
+    for (size_t i = 0; i <= nameLen; i++) {
+        if (i == nameLen || name[i] == kSearchAliasSeparator) {
+            if (i > start && me::simdContains(name + start, i - start, term, termLen)) {
+                best = std::min(best, termQuality(name + start, static_cast<uint16_t>(i - start), term, termLen));
+            }
+            start = i + 1;
+        }
+    }
+    return best;
+}
+
 uint32_t ShortQueryCache::computeScore(const char* name, uint16_t nameLen,
                                         uint32_t pathLen,
                                         const char* term, size_t termLen) {
-    uint8_t quality = termQuality(name, nameLen, term, termLen);
+    uint8_t quality = bestAliasTermQuality(name, nameLen, term, termLen);
     uint8_t pathByte = static_cast<uint8_t>(std::min<uint32_t>(pathLen, 255));
     return ((uint32_t)0 << 16) | ((uint32_t)quality << 8) | pathByte;
 }
@@ -75,7 +96,8 @@ void ShortQueryCache::insertIntoKey(int ki, const char* name, uint16_t nameLen,
 }
 
 void ShortQueryCache::rebuild(const std::vector<uint8_t>& types,
-                               const StringPool& namePool,
+                               const StringPool& searchableNamePool,
+                               const StringPool& canonicalNamePool,
                                const StringPool& lowerPathPool,
                                const std::vector<uint32_t>& pathIndices,
                                size_t totalSize) {
@@ -87,13 +109,13 @@ void ShortQueryCache::rebuild(const std::vector<uint8_t>& types,
 
     for (size_t i = 0; i < totalSize; i++) {
         if (types[i] == 0) continue;
-        const char* name = namePool.data(static_cast<uint32_t>(i));
-        uint16_t nameLen = namePool.length(static_cast<uint32_t>(i));
+        const char* name = searchableNamePool.data(static_cast<uint32_t>(i));
+        uint16_t nameLen = searchableNamePool.length(static_cast<uint32_t>(i));
         if (nameLen == 0) continue;
 
         uint32_t pi = pathIndices[i];
         uint16_t pathLen = lowerPathPool.length(pi);
-        uint32_t fullPathLen = static_cast<uint32_t>(pathLen) + 1 + nameLen;
+        uint32_t fullPathLen = static_cast<uint32_t>(pathLen) + 1 + canonicalNamePool.length(static_cast<uint32_t>(i));
 
         hitKeys.clear();
         memset(seen, 0, sizeof(seen));

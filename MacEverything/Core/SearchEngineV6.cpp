@@ -101,6 +101,8 @@ void SearchEngine::loadRecordsV6(StringPool&& origNamePool,
         }
     }
 
+    rebuildSearchableNamePools();
+
     liveCount_.store(actualLive, std::memory_order_relaxed);
 
     // Phase 2: defer trigram index building to background
@@ -153,6 +155,7 @@ std::string SearchEngine::completePhase2() {
     std::vector<uint8_t> snapTypes;
     std::vector<int64_t> snapModTimes;
     StringPool snapNamePool;
+    StringPool snapSearchableNamePool;
     StringPool snapLowerPathPool;
     std::vector<uint32_t> snapPathIndices;
     uint32_t snapPathPoolSize;
@@ -163,6 +166,7 @@ std::string SearchEngine::completePhase2() {
         snapTypes = types_;
         snapModTimes = modTimes_;
         snapNamePool = namePool_;
+        snapSearchableNamePool = searchableNamePool_;
         snapLowerPathPool = lowerPathPool_;
         snapPathIndices = pathIndices_;
         snapPathPoolSize = pathPool_.entryCount();
@@ -173,7 +177,7 @@ std::string SearchEngine::completePhase2() {
 
     // Build all indices without holding any lock
     auto t0 = std::chrono::steady_clock::now();
-    auto trigramIndex = buildTrigramIndexFromData(snapTypes, snapNamePool);
+    auto trigramIndex = buildTrigramIndexFromData(snapTypes, snapSearchableNamePool);
     auto trigramMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
 
@@ -218,7 +222,9 @@ std::string SearchEngine::completePhase2() {
         uint32_t replayCount = 0;
         for (uint32_t i = snapSize; i < currentSize; i++) {
             if (types_[i] == 0) continue;
-            addTrigramsForRecord(i, namePool_.data(i), namePool_.length(i));
+            if (i >= searchableNamePool_.entryCount()) searchableNamePool_.append(buildSearchableName(i));
+            if (i >= originalSearchableNamePool_.entryCount()) originalSearchableNamePool_.append(buildOriginalSearchableName(i));
+            addTrigramsForRecord(i, searchableNamePool_.data(i), searchableNamePool_.length(i));
             addPathTrigramsForRecord(i);
             addExtensionForRecord(i);
             addToRecentCache(i, static_cast<time_t>(modTimes_[i]));

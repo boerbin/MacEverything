@@ -202,5 +202,121 @@ static void runLowerPathPoolTests() {
         check(path == "/Users/Dev/MyProject", "resolveRecordPath returns original casing, not lowered");
     }
 
+    // --- 7. App bundle display name is searchable without changing filesystem name ---
+    {
+        auto tmpDir = fs::temp_directory_path() / ("me_app_display_name_" + std::to_string(getpid()));
+        fs::remove_all(tmpDir);
+        fs::create_directories(tmpDir / "WebPomodoro.app" / "Contents");
+        std::ofstream plist(tmpDir / "WebPomodoro.app" / "Contents" / "Info.plist");
+        plist << R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Focus To-Do</string>
+    <key>CFBundleName</key>
+    <string>Focus To-Do</string>
+</dict>
+</plist>
+)";
+        plist.close();
+
+        SearchEngine engine;
+        std::vector<FileRecord> records;
+        records.push_back({"WebPomodoro.app", tmpDir.string(), 5, 0, 1000});
+        engine.loadRecords(std::move(records));
+
+        auto fsNameResults = engine.query("WebPomodoro");
+        check(fsNameResults.size() == 1, "app display-name: filesystem bundle name still matches");
+        check(engine.getRecord(fsNameResults[0]).name == "WebPomodoro.app",
+              "app display-name: filesystem name preserved in result");
+
+        auto displayNameResults = engine.query("Focus To-Do");
+        check(displayNameResults.size() == 1, "app display-name: Finder display name matches");
+        if (!displayNameResults.empty()) {
+            check(engine.getRecord(displayNameResults[0]).name == "WebPomodoro.app",
+                  "app display-name: display-name match returns original bundle name");
+        }
+
+        auto shortAliasResults = engine.query("fo");
+        check(shortAliasResults.size() == 1, "app display-name: short-query cache matches display alias");
+
+        auto globAliasResults = engine.query("*focus*");
+        check(globAliasResults.size() == 1, "app display-name: glob matches display alias");
+
+        auto prefixGlobAliasResults = engine.query("focus*");
+        check(prefixGlobAliasResults.size() == 1, "app display-name: prefix glob matches display alias");
+
+        auto crossAliasPhraseResults = engine.query("\"app focus\"");
+        check(crossAliasPhraseResults.empty(), "app display-name: quoted phrase does not cross alias boundary");
+
+        auto regexAliasResults = engine.query("regex:focus");
+        check(regexAliasResults.size() == 1, "app display-name: regex matches display alias");
+
+        auto caseAliasResults = engine.query("case:Focus");
+        check(caseAliasResults.size() == 1, "app display-name: case-sensitive query matches original display alias");
+
+        auto wholeWordAliasResults = engine.query("ww:focus");
+        check(wholeWordAliasResults.size() == 1, "app display-name: whole-word matches display alias");
+
+        auto partialWholeFilenameAliasResults = engine.query("wfn:focus");
+        check(partialWholeFilenameAliasResults.empty(), "app display-name: whole-filename does not partial-match display alias");
+
+        auto structuredAliasResults = engine.query(tmpDir.filename().string() + "/focus");
+        check(structuredAliasResults.size() == 1, "app display-name: structured path query matches display alias");
+
+        fs::create_directories(tmpDir / "BadMetadata.app" / "Contents");
+        std::ofstream badPlist(tmpDir / "BadMetadata.app" / "Contents" / "Info.plist");
+        badPlist << R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <integer>42</integer>
+</dict>
+</plist>
+)";
+        badPlist.close();
+
+        SearchEngine malformedEngine;
+        std::vector<FileRecord> malformedRecords;
+        malformedRecords.push_back({"BadMetadata.app", tmpDir.string(), 5, 0, 1000});
+        malformedEngine.loadRecords(std::move(malformedRecords));
+        auto malformedResults = malformedEngine.query("BadMetadata");
+        check(malformedResults.size() == 1, "app display-name: malformed plist keeps filesystem search working");
+        auto ignoredBadAliasResults = malformedEngine.query("42");
+        check(ignoredBadAliasResults.empty(), "app display-name: non-string display metadata is ignored");
+
+        fs::remove_all(tmpDir);
+    }
+
+    // --- 8. Structured query ranking scores display aliases independently ---
+    {
+        auto tmpDir = fs::temp_directory_path() / ("me_app_display_rank_" + std::to_string(getpid()));
+        fs::remove_all(tmpDir);
+        fs::create_directories(tmpDir / "WebPomodoro.app" / "Contents");
+        std::ofstream plist(tmpDir / "WebPomodoro.app" / "Contents" / "Info.plist");
+        plist << R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleDisplayName</key><string>focus</string></dict></plist>
+)";
+        plist.close();
+
+        SearchEngine engine;
+        std::vector<FileRecord> records;
+        records.push_back({"focus-file.txt", tmpDir.string(), 1, 1, 1000});
+        records.push_back({"WebPomodoro.app", tmpDir.string(), 5, 0, 2000});
+        engine.loadRecords(std::move(records));
+
+        auto rankedResults = engine.query(tmpDir.filename().string() + "/focus", 1);
+        check(rankedResults.size() == 1, "app display-name: structured ranking limited query returns one result");
+        if (!rankedResults.empty()) {
+            check(engine.getRecord(rankedResults[0]).name == "WebPomodoro.app",
+                  "app display-name: structured exact display alias outranks canonical prefix");
+        }
+
+        fs::remove_all(tmpDir);
+    }
+
     std::cout << "\n";
 }

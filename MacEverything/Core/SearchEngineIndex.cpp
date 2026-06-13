@@ -131,11 +131,11 @@ SearchEngine::buildTrigramIndexFromData(const std::vector<uint8_t>& types,
 }
 
 void SearchEngine::buildTrigramIndex() {
-    nameTrigramIndex_ = buildTrigramIndexFromData(types_, namePool_);
+    nameTrigramIndex_ = buildTrigramIndexFromData(types_, searchableNamePool_);
 }
 
 void SearchEngine::buildShortQueryCache() {
-    shortQueryCache_.rebuild(types_, namePool_, lowerPathPool_, pathIndices_, types_.size());
+    shortQueryCache_.rebuild(types_, searchableNamePool_, namePool_, lowerPathPool_, pathIndices_, types_.size());
 }
 
 void SearchEngine::addTrigramsForRecord(uint32_t idx, const char* data, uint16_t len) {
@@ -153,9 +153,9 @@ void SearchEngine::addTrigramsForRecord(uint32_t idx, const char* data, uint16_t
 }
 
 void SearchEngine::removeTrigramsForRecord(uint32_t idx) {
-    if (idx >= namePool_.entryCount() || !namePool_.isLive(idx)) return;
-    // Recompute trigrams from namePool_ instead of storing per-record lists
-    auto trigrams = ContentIndex::extractTrigrams(std::string(namePool_.data(idx), namePool_.length(idx)));
+    if (idx >= searchableNamePool_.entryCount() || !searchableNamePool_.isLive(idx)) return;
+    // Recompute trigrams from searchableNamePool_ instead of storing per-record lists
+    auto trigrams = ContentIndex::extractTrigrams(std::string(searchableNamePool_.data(idx), searchableNamePool_.length(idx)));
     std::sort(trigrams.begin(), trigrams.end());
     trigrams.erase(std::unique(trigrams.begin(), trigrams.end()), trigrams.end());
     for (Trigram t : trigrams) {

@@ -168,12 +168,14 @@
 | [182](182-issue3-memory-table-examples.md) | docs | Issue #3 内存结构表格增加内容示例列 | 2026-06-02 |
 | [183](183-fix-search-input-lag.md) | perf | 修复搜索输入卡顿：缓存 highlightHints(P0)、批量 @Published 更新(P1)、打字时抑制 onIndexChanged(P2)、延迟 applyHighlighting(P3) | 2026-06-05 |
 | [184](184-release-v1.4.md) | release | 发布 v1.4：搜索输入延迟修复(P0-P3)、内存优化(issue #3)、文档完善、测试增强 | 2026-06-05 |
+| [185](185-fix-ime-composition-guard.md) | bugfix | 修复中文输入法组合态刷新丢键：阻断 textDidChange/updateNSView/applyHighlighting 对 marked text 的干扰 | 2026-06-10 |
+| [186](186-fix-app-display-name-search.md) | bugfix | 修复 macOS app bundle Finder 显示名不可搜索：用 search-only alias pool 索引 CFBundleDisplayName/CFBundleName | 2026-06-13 |
 
 ## 统计
 
 | 类型 | 数量 |
 |------|------|
-| bugfix | 54 |
+| bugfix | 56 |
 | feature | 38 |
 | performance | 31 |
 | refactor | 18 |
@@ -181,7 +183,7 @@
 | docs | 10 |
 | chore | 1 |
 | release | 1 |
-| **合计** | **159 条 (152 个编号, 7 组重复编号各 2 条)** |
+| **合计** | **161 条 (154 个编号, 7 组重复编号各 2 条)** |
 
 ---
 
@@ -202,3 +204,5 @@
 | 2026-06-01 | 1 |
 | 2026-06-02 | 1 |
 | 2026-06-05 | 2 |
+| 2026-06-10 | 1 |
+| 2026-06-13 | 1 |

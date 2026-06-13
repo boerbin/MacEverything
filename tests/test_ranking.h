@@ -16,9 +16,10 @@ static void runSearchRankingTests() {
     {
         SearchEngine engine;
         std::vector<FileRecord> records;
-        records.push_back({"Alfred 5.app", "/Applications", 5, 0, 1000});
-        records.push_back({"Info.plist", "/Applications/Alfred 5.app/Contents", 1, 100, 2000});
-        records.push_back({"Alfred", "/Applications/Alfred 5.app/Contents/MacOS", 1, 5000, 3000});
+        const std::string appDir = "/tmp/maceverything_ranking_apps";
+        records.push_back({"Alfred 5.app", appDir, 5, 0, 1000});
+        records.push_back({"Info.plist", appDir + "/Alfred 5.app/Contents", 1, 100, 2000});
+        records.push_back({"Alfred", appDir + "/Alfred 5.app/Contents/MacOS", 1, 5000, 3000});
         records.push_back({"alfred_helper", "/usr/local/bin", 1, 200, 4000});
         engine.loadRecords(std::move(records));
 
@@ -33,11 +34,12 @@ static void runSearchRankingTests() {
     {
         SearchEngine engine;
         std::vector<FileRecord> records;
+        const std::string appDir = "/tmp/maceverything_ranking_apps";
         // "alfred_helper" starts with "alfred" -> priority 1
         // "Alfred 5.app" lowercased is "alfred 5.app", starts with "alfred" -> priority 1
         // "xalfred" contains "alfred" but doesn't start with it -> priority 2
         records.push_back({"xalfred", "/tmp", 1, 100, 1000});
-        records.push_back({"Alfred 5.app", "/Applications", 5, 0, 2000});
+        records.push_back({"Alfred 5.app", appDir, 5, 0, 2000});
         records.push_back({"alfred_helper", "/bin", 1, 200, 3000});  // short path
         records.push_back({"Alfred", "/opt", 1, 5000, 4000});
         engine.loadRecords(std::move(records));

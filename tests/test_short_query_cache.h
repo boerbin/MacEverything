@@ -219,7 +219,78 @@ static void runShortQueryCacheTests() {
         check(results.size() == 3, "ShortQueryCache-compact: returns 3 results after compaction");
     }
 
-    // ── Test 9: BoundedSortedVec eviction ──
+    // ── Test 9: updateByPath inserts replacement into cache ──
+    std::cout << "\n  --- updateByPath cache insert ---\n";
+    {
+        SearchEngine engine;
+        std::vector<FileRecord> records;
+        records.push_back({"placeholder.txt", "/tmp", 1, 100, 1000});
+        engine.loadRecords(std::move(records));
+        engine.buildShortQueryCache();
+
+        QueryTimingInfo beforeTiming{};
+        auto before = engine.query("fo", 100, true, beforeTiming);
+        check(beforeTiming.searchPath == "short-query-cache",
+              "ShortQueryCache-update: initial query uses cache");
+        check(before.empty(), "ShortQueryCache-update: no initial 'fo' matches");
+
+        auto tmpDir = fs::temp_directory_path() / ("me_sqcache_update_" + std::to_string(getpid()));
+        fs::remove_all(tmpDir);
+        fs::create_directories(tmpDir / "WebPomodoro.app" / "Contents");
+        std::ofstream plist(tmpDir / "WebPomodoro.app" / "Contents" / "Info.plist");
+        plist << R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleDisplayName</key><string>Focus To-Do</string></dict></plist>
+)";
+        plist.close();
+
+        engine.updateByPath("/tmp/placeholder.txt", {"WebPomodoro.app", tmpDir.string(), 5, 0, 2000});
+
+        QueryTimingInfo afterTiming{};
+        auto after = engine.query("fo", 100, true, afterTiming);
+        check(afterTiming.searchPath == "short-query-cache",
+              "ShortQueryCache-update: replacement query uses cache");
+        check(after.size() == 1, "ShortQueryCache-update: display alias inserted into cache");
+        if (!after.empty()) {
+            check(engine.getRecord(after[0]).name == "WebPomodoro.app",
+                  "ShortQueryCache-update: cache returns updated app record");
+        }
+        fs::remove_all(tmpDir);
+    }
+
+    // ── Test 10: display alias prefix ranks before canonical substring ──
+    std::cout << "\n  --- display alias prefix ranking ---\n";
+    {
+        auto tmpDir = fs::temp_directory_path() / ("me_sqcache_rank_" + std::to_string(getpid()));
+        fs::remove_all(tmpDir);
+        fs::create_directories(tmpDir / "WebPomodoro.app" / "Contents");
+        std::ofstream plist(tmpDir / "WebPomodoro.app" / "Contents" / "Info.plist");
+        plist << R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleDisplayName</key><string>Focus To-Do</string></dict></plist>
+)";
+        plist.close();
+
+        SearchEngine engine;
+        std::vector<FileRecord> records;
+        records.push_back({"prefixfo.txt", "/tmp/deep/path/that/is/longer", 1, 100, 1000});
+        records.push_back({"WebPomodoro.app", tmpDir.string(), 5, 0, 2000});
+        engine.loadRecords(std::move(records));
+        engine.buildShortQueryCache();
+
+        QueryTimingInfo timing{};
+        auto results = engine.query("fo", 1, true, timing);
+        check(timing.searchPath == "short-query-cache",
+              "ShortQueryCache-rank: query uses cache");
+        check(results.size() == 1, "ShortQueryCache-rank: limited query returns one result");
+        if (!results.empty()) {
+            check(engine.getRecord(results[0]).name == "WebPomodoro.app",
+                  "ShortQueryCache-rank: display alias prefix outranks canonical substring");
+        }
+        fs::remove_all(tmpDir);
+    }
+
+    // ── Test 11: BoundedSortedVec eviction ──
     std::cout << "\n  --- BoundedSortedVec eviction ---\n";
     {
         BoundedSortedVec<int> vec(3);

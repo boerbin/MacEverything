@@ -24,6 +24,21 @@ uint8_t SearchEngine::namePriority(const char* nameData, uint16_t nameLen,
     return 2; // contains
 }
 
+uint8_t SearchEngine::searchableNamePriority(const char* nameData, uint16_t nameLen,
+                                             const char* keyData, size_t keyLen) {
+    uint8_t best = 2;
+    size_t start = 0;
+    for (size_t i = 0; i <= nameLen; i++) {
+        if (i == nameLen || nameData[i] == '\x1F') {
+            if (i > start) {
+                best = std::min(best, namePriority(nameData + start, static_cast<uint16_t>(i - start), keyData, keyLen));
+            }
+            start = i + 1;
+        }
+    }
+    return best;
+}
+
 // ---------------------------------------------------------------------------
 // Full path buffer construction
 // ---------------------------------------------------------------------------

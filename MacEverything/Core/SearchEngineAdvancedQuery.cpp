@@ -252,6 +252,25 @@ static bool evalFilter(const QueryNode& node,
     return true;
 }
 
+template <typename Fn>
+static bool forEachSearchAlias(const char* data, uint16_t len, Fn&& fn) {
+    size_t start = 0;
+    for (size_t i = 0; i <= len; i++) {
+        if (i == len || data[i] == '\x1F') {
+            if (i > start && fn(data + start, i - start)) return true;
+            start = i + 1;
+        }
+    }
+    return false;
+}
+
+static bool containsInAnyAlias(const char* data, uint16_t len,
+                               const char* term, size_t termLen) {
+    return forEachSearchAlias(data, len, [&](const char* alias, size_t aliasLen) {
+        return me::simdContains(alias, aliasLen, term, termLen);
+    });
+}
+
 /// Evaluate a TERM node against a single record.
 /// Returns true if the record's name or full path matches the term text.
 /// nameData is lowercase (from namePool_), origNameData has original case (from origNamePool_).
@@ -259,6 +278,8 @@ static bool evalFilter(const QueryNode& node,
 /// Returns false when nameData is nullptr (pure-filter SoA fast path).
 static bool evalTerm(const QueryNode& node,
                      const char* nameData, uint16_t nameLen,
+                     const char* searchableNameData, uint16_t searchableNameLen,
+                     const char* originalSearchableNameData, uint16_t originalSearchableNameLen,
                      const char* pathData, uint16_t pathLen,
                      const char* origNameData, uint16_t origNameLen,
                      const char* origPathData, uint16_t origPathLen,
@@ -279,6 +300,7 @@ static bool evalTerm(const QueryNode& node,
                 }
             }
             // Check full path (original case: origPath + "/" + origName)
+            if (containsInAnyAlias(originalSearchableNameData, originalSearchableNameLen, term.data(), term.size())) return true;
             if (node.nameOnly) return false;
             size_t fullLen = static_cast<size_t>(origPathLen) + 1 + origNameLen;
             if (pathBuf.size() < fullLen) pathBuf.resize(fullLen * 2);
@@ -293,11 +315,9 @@ static bool evalTerm(const QueryNode& node,
             }
             return false;
         }
-        // Case-insensitive (default): use lowercase nameData
+        // Case-insensitive (default): use lowercase searchableNameData so app display aliases match.
         const auto& lower = node.textLower;
-        if (me::simdContains(nameData, nameLen, lower.data(), lower.size())) {
-            return true;
-        }
+        if (containsInAnyAlias(searchableNameData, searchableNameLen, lower.data(), lower.size())) return true;
         // Skip full-path matching when nameOnly is set
         // (transformSlashTerms uses this for name-component terms)
         if (node.nameOnly) return false;
@@ -323,19 +343,19 @@ static bool evalTerm(const QueryNode& node,
             }
             return globMatchImpl(pattern, pathBuf.data(), fullLen);
         }
-        // Name-only glob: use pre-compiled fast path (zero-alloc)
-        if (node.compiledGlob) {
-            return compiledGlobMatch(*node.compiledGlob, nameData, nameLen);
-        }
-        return globMatchImpl(pattern, nameData, nameLen);
+        return forEachSearchAlias(searchableNameData, searchableNameLen, [&](const char* alias, size_t aliasLen) {
+            if (node.compiledGlob) return compiledGlobMatch(*node.compiledGlob, alias, aliasLen);
+            return globMatchImpl(pattern, alias, aliasLen);
+        });
     }
 
     case MatchMode::REGEX: {
         auto it = regexCache.find(&node);
         if (it == regexCache.end()) return false;
-        // Match against name using RE2 zero-copy StringPiece (no per-record allocation)
-        re2::StringPiece sp(nameData, nameLen);
-        if (RE2::PartialMatch(sp, *it->second)) return true;
+        if (forEachSearchAlias(searchableNameData, searchableNameLen, [&](const char* alias, size_t aliasLen) {
+            re2::StringPiece sp(alias, aliasLen);
+            return RE2::PartialMatch(sp, *it->second);
+        })) return true;
         // If not nameOnly, also try full path match
         if (node.nameOnly) return false;
         size_t fullLen = static_cast<size_t>(pathLen) + 1 + nameLen;
@@ -349,8 +369,8 @@ static bool evalTerm(const QueryNode& node,
 
     case MatchMode::WHOLEWORD: {
         const auto& lower = node.textLower;
-        // Check in lowercase name
-        std::string name(nameData, nameLen);
+        // Check in lowercase searchable name aliases.
+        std::string name(searchableNameData, searchableNameLen);
         for (size_t i = 0; i + lower.size() <= name.size(); ++i) {
             if (memcmp(name.data() + i, lower.data(), lower.size()) == 0) {
                 if (isWholeWordMatch(name.data(), name.size(), i, lower.size()))
@@ -362,11 +382,13 @@ static bool evalTerm(const QueryNode& node,
 
     case MatchMode::WHOLEFILENAME: {
         const auto& lower = node.textLower;
-        // Entire filename must match
+        // Entire canonical filename or a searchable alias token must match.
         if (nameLen == lower.size() &&
             memcmp(nameData, lower.data(), nameLen) == 0)
             return true;
-        return false;
+        return forEachSearchAlias(searchableNameData, searchableNameLen, [&](const char* alias, size_t aliasLen) {
+            return aliasLen == lower.size() && memcmp(alias, lower.data(), lower.size()) == 0;
+        });
     }
 
     } // switch
@@ -377,6 +399,8 @@ static bool evalTerm(const QueryNode& node,
 static bool evalNode(const QueryNode& node,
                      uint8_t recType, uint64_t recSize, time_t recModTime,
                      const char* nameData, uint16_t nameLen,
+                     const char* searchableNameData, uint16_t searchableNameLen,
+                     const char* originalSearchableNameData, uint16_t originalSearchableNameLen,
                      const char* pathData, uint16_t pathLen,
                      const char* origNameData, uint16_t origNameLen,
                      const char* origPathData, uint16_t origPathLen,
@@ -384,16 +408,18 @@ static bool evalNode(const QueryNode& node,
                      const RegexCache& regexCache) {
     switch (node.type) {
         case QueryNodeType::TERM:
-            return evalTerm(node, nameData, nameLen, pathData, pathLen,
-                            origNameData, origNameLen, origPathData, origPathLen,
-                            pathBuf, regexCache);
+            return evalTerm(node, nameData, nameLen, searchableNameData, searchableNameLen,
+                            originalSearchableNameData, originalSearchableNameLen,
+                            pathData, pathLen, origNameData, origNameLen,
+                            origPathData, origPathLen, pathBuf, regexCache);
 
         case QueryNodeType::AND:
             for (auto& child : node.children) {
                 if (!evalNode(*child, recType, recSize, recModTime,
-                              nameData, nameLen, pathData, pathLen,
-                              origNameData, origNameLen, origPathData, origPathLen,
-                              pathBuf, regexCache))
+                              nameData, nameLen, searchableNameData, searchableNameLen,
+                              originalSearchableNameData, originalSearchableNameLen,
+                              pathData, pathLen, origNameData, origNameLen,
+                              origPathData, origPathLen, pathBuf, regexCache))
                     return false;
             }
             return true;
@@ -401,9 +427,10 @@ static bool evalNode(const QueryNode& node,
         case QueryNodeType::OR:
             for (auto& child : node.children) {
                 if (evalNode(*child, recType, recSize, recModTime,
-                             nameData, nameLen, pathData, pathLen,
-                             origNameData, origNameLen, origPathData, origPathLen,
-                             pathBuf, regexCache))
+                             nameData, nameLen, searchableNameData, searchableNameLen,
+                             originalSearchableNameData, originalSearchableNameLen,
+                             pathData, pathLen, origNameData, origNameLen,
+                             origPathData, origPathLen, pathBuf, regexCache))
                     return true;
             }
             return false;
@@ -411,9 +438,10 @@ static bool evalNode(const QueryNode& node,
         case QueryNodeType::NOT:
             if (node.children.empty()) return true;
             return !evalNode(*node.children[0], recType, recSize, recModTime,
-                             nameData, nameLen, pathData, pathLen,
-                             origNameData, origNameLen, origPathData, origPathLen,
-                             pathBuf, regexCache);
+                             nameData, nameLen, searchableNameData, searchableNameLen,
+                             originalSearchableNameData, originalSearchableNameLen,
+                             pathData, pathLen, origNameData, origNameLen,
+                             origPathData, origPathLen, pathBuf, regexCache);
 
         case QueryNodeType::FILTER:
             return evalFilter(node, recType, recSize, recModTime,
@@ -536,6 +564,21 @@ static uint8_t computeTermQuality(const char* name, uint16_t nameLen,
     return 3; // substring
 }
 
+static uint8_t computeBestAliasTermQuality(const char* name, uint16_t nameLen,
+                                           const char* term, size_t termLen) {
+    uint8_t best = 3;
+    size_t start = 0;
+    for (size_t i = 0; i <= nameLen; i++) {
+        if (i == nameLen || name[i] == '\x1F') {
+            if (i > start && me::simdContains(name + start, i - start, term, termLen)) {
+                best = std::min(best, computeTermQuality(name + start, static_cast<uint16_t>(i - start), term, termLen));
+            }
+            start = i + 1;
+        }
+    }
+    return best;
+}
+
 static uint32_t computeMultiTermScore(const char* name, uint16_t nameLen, uint32_t pathLen,
                                        const std::vector<std::string>& terms) {
     if (terms.empty()) {
@@ -546,7 +589,7 @@ static uint32_t computeMultiTermScore(const char* name, uint16_t nameLen, uint32
     uint16_t qualitySum = 0;
     for (auto& t : terms) {
         if (me::simdContains(name, nameLen, t.data(), t.size())) {
-            qualitySum += computeTermQuality(name, nameLen, t.data(), t.size());
+            qualitySum += computeBestAliasTermQuality(name, nameLen, t.data(), t.size());
         } else {
             missCount++;
         }
@@ -818,6 +861,8 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
             const auto* sizesPtr = sizes_.data();
             const auto* modTimesPtr = modTimes_.data();
             const auto& namePool = namePool_;
+            const auto& searchableNamePool = searchableNamePool_;
+            const auto& originalSearchableNamePool = originalSearchableNamePool_;
             const auto& origNamePool = origNamePool_;
             const auto& lowerPathPool = lowerPathPool_;
             const auto& pathPool = pathPool_;
@@ -846,6 +891,10 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                     if (typesPtr[idx] == 0) continue;
                     const char* nd = namePool.data(idx);
                     uint16_t nl = namePool.length(idx);
+                    const char* snd = searchableNamePool.data(idx);
+                    uint16_t snl = searchableNamePool.length(idx);
+                    const char* osnd = originalSearchableNamePool.data(idx);
+                    uint16_t osnl = originalSearchableNamePool.length(idx);
                     uint32_t pi = pIndices[idx];
                     const char* pd = lowerPathPool.data(pi);
                     uint16_t pl = lowerPathPool.length(pi);
@@ -855,9 +904,9 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                     uint16_t opl = pathPool.length(pi);
                     if (!evalNode(*astPtr, typesPtr[idx], sizesPtr[idx],
                                   static_cast<time_t>(modTimesPtr[idx]),
-                                  nd, nl, pd, pl, ond, onl, opd, opl,
+                                  nd, nl, snd, snl, osnd, osnl, pd, pl, ond, onl, opd, opl,
                                   localPathBuf, regCache)) continue;
-                    uint32_t sc = computeMultiTermScore(nd, nl, static_cast<uint32_t>(pl + 1 + nl), sTerms);
+                    uint32_t sc = computeMultiTermScore(snd, snl, static_cast<uint32_t>(pl + 1 + nl), sTerms);
                     local.push_back({idx, sc});
                 }
             });
@@ -883,6 +932,10 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                 if (smallTypesPtr[idx] == 0) continue;
                 const char* nd = namePool_.data(idx);
                 uint16_t nl = namePool_.length(idx);
+                const char* snd = searchableNamePool_.data(idx);
+                uint16_t snl = searchableNamePool_.length(idx);
+                const char* osnd = originalSearchableNamePool_.data(idx);
+                uint16_t osnl = originalSearchableNamePool_.length(idx);
                 uint32_t pi = pathIndices_[idx];
                 const char* pd = lowerPathPool_.data(pi);
                 uint16_t pl = lowerPathPool_.length(pi);
@@ -892,9 +945,9 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                 uint16_t opl = pathPool_.length(pi);
                 if (!evalNode(*ast, smallTypesPtr[idx], smallSizesPtr[idx],
                               static_cast<time_t>(smallModTimesPtr[idx]),
-                              nd, nl, pd, pl, ond, onl, opd, opl,
+                              nd, nl, snd, snl, osnd, osnl, pd, pl, ond, onl, opd, opl,
                               pathBuf, regexCache)) continue;
-                uint32_t sc = computeMultiTermScore(nd, nl, static_cast<uint32_t>(pl + 1 + nl), scoringTerms);
+                uint32_t sc = computeMultiTermScore(snd, snl, static_cast<uint32_t>(pl + 1 + nl), scoringTerms);
                 merged.push_back({idx, sc});
             }
         }
@@ -918,6 +971,8 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
         const auto* sizesPtr = sizes_.data();
         const auto* modTimesPtr = modTimes_.data();
         const auto& namePool = namePool_;
+        const auto& searchableNamePool = searchableNamePool_;
+        const auto& originalSearchableNamePool = originalSearchableNamePool_;
         const auto& origNamePool = origNamePool_;
         const auto& lowerPathPool = lowerPathPool_;
         const auto& pathPool = pathPool_;
@@ -950,7 +1005,8 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                     if (typesPtr[idx] == 0) continue;
                     if (!evalNode(*astPtr, typesPtr[idx], sizesPtr[idx],
                                   static_cast<time_t>(modTimesPtr[idx]),
-                                  nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
+                                  nullptr, 0, nullptr, 0, nullptr, 0,
+                                  nullptr, 0, nullptr, 0, nullptr, 0,
                                   localPathBuf, regCache)) continue;
                     local.push_back({static_cast<uint32_t>(idx), pureFilterScore});
                 }
@@ -967,7 +1023,8 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                         size_t ri = idx + bit;
                         if (evalNode(*astPtr, typesPtr[ri], sizesPtr[ri],
                                      static_cast<time_t>(modTimesPtr[ri]),
-                                     nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
+                                     nullptr, 0, nullptr, 0, nullptr, 0,
+                                  nullptr, 0, nullptr, 0, nullptr, 0,
                                      localPathBuf, regCache)) {
                             local.push_back({static_cast<uint32_t>(ri), pureFilterScore});
                         }
@@ -980,7 +1037,8 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                     if (typesPtr[idx] == 0) continue;
                     if (!evalNode(*astPtr, typesPtr[idx], sizesPtr[idx],
                                   static_cast<time_t>(modTimesPtr[idx]),
-                                  nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
+                                  nullptr, 0, nullptr, 0, nullptr, 0,
+                                  nullptr, 0, nullptr, 0, nullptr, 0,
                                   localPathBuf, regCache)) continue;
                     local.push_back({static_cast<uint32_t>(idx), pureFilterScore});
                 }
@@ -992,6 +1050,10 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
                     if (typesPtr[idx] == 0) continue;
                     const char* nd = namePool.data(static_cast<uint32_t>(idx));
                     uint16_t nl = namePool.length(static_cast<uint32_t>(idx));
+                    const char* snd = searchableNamePool.data(static_cast<uint32_t>(idx));
+                    uint16_t snl = searchableNamePool.length(static_cast<uint32_t>(idx));
+                    const char* osnd = originalSearchableNamePool.data(static_cast<uint32_t>(idx));
+                    uint16_t osnl = originalSearchableNamePool.length(static_cast<uint32_t>(idx));
                     uint32_t pi = pIndices[idx];
                     const char* pd = lowerPathPool.data(pi);
                     uint16_t pl = lowerPathPool.length(pi);
@@ -1002,10 +1064,10 @@ std::vector<uint32_t> SearchEngine::queryAdvanced(const std::string& input,
 
                     if (!evalNode(*astPtr, typesPtr[idx], sizesPtr[idx],
                                   static_cast<time_t>(modTimesPtr[idx]),
-                                  nd, nl, pd, pl, ond, onl, opd, opl,
+                                  nd, nl, snd, snl, osnd, osnl, pd, pl, ond, onl, opd, opl,
                                   localPathBuf, regCache)) continue;
 
-                    uint32_t sc = computeMultiTermScore(nd, nl, static_cast<uint32_t>(pl + 1 + nl), sTerms);
+                    uint32_t sc = computeMultiTermScore(snd, snl, static_cast<uint32_t>(pl + 1 + nl), sTerms);
                     local.push_back({static_cast<uint32_t>(idx), sc});
                 }
             }

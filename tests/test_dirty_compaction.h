@@ -66,9 +66,12 @@ static void testIndexPersistenceSkipsCleanCompaction() {
     rec.modTime = 1000;
     engine->addRecord(std::move(rec));
 
+    engine->buildShortQueryCache();
+
     // First compaction should succeed (WAL is dirty from addOrUpdate)
     persistence.compact(1, /*force=*/true);
     check(fs::exists(v6Path), "v6 index should be written after dirty compaction");
+    check(!fs::exists(v6Path + ".sqcache"), "IndexPersistence should not persist short-query cache beside v6 index");
 
     // Get file modification time after first compaction
     auto modTime1 = fs::last_write_time(v6Path);

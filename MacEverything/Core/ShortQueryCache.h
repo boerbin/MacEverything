@@ -21,7 +21,8 @@ public:
     };
 
     void rebuild(const std::vector<uint8_t>& types,
-                 const StringPool& namePool,
+                 const StringPool& searchableNamePool,
+                 const StringPool& canonicalNamePool,
                  const StringPool& lowerPathPool,
                  const std::vector<uint32_t>& pathIndices,
                  size_t totalSize);
@@ -44,7 +45,7 @@ public:
 
 private:
     static constexpr uint32_t kMagic = 0x56435153;
-    static constexpr uint32_t kVersion = 2;
+    static constexpr uint32_t kVersion = 3;
 
     std::array<CacheEntry, kTotalKeys> entries_;
     bool built_ = false;
@@ -53,6 +54,8 @@ private:
 
     static uint8_t termQuality(const char* name, uint16_t nameLen,
                                const char* term, size_t termLen);
+    static uint8_t bestAliasTermQuality(const char* name, uint16_t nameLen,
+                                        const char* term, size_t termLen);
     static uint32_t computeScore(const char* name, uint16_t nameLen,
                                  uint32_t pathLen,
                                  const char* term, size_t termLen);

@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <CoreFoundation/CoreFoundation.h>
 
 std::string SearchEngine::makeFullPath(std::string_view path, std::string_view name) {
     if (path.empty() || path.back() == '/') {
@@ -24,6 +25,82 @@ std::string SearchEngine::makeFullPath(std::string_view path, std::string_view n
     return result;
 }
 
+namespace {
+
+constexpr char kSearchAliasSeparator = '\x1F';
+
+std::string cfStringToUtf8(CFStringRef value) {
+    if (!value) return {};
+    CFIndex len = CFStringGetLength(value);
+    CFIndex maxSize = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8) + 1;
+    std::string result(static_cast<size_t>(maxSize), '\0');
+    if (!CFStringGetCString(value, &result[0], maxSize, kCFStringEncodingUTF8)) return {};
+    result.resize(strlen(result.c_str()));
+    return result;
+}
+
+std::string sanitizeSearchAlias(std::string alias) {
+    std::replace(alias.begin(), alias.end(), kSearchAliasSeparator, ' ');
+    return alias;
+}
+
+std::string readAppDisplayName(std::string_view path,
+                               std::string_view lowerName,
+                               std::string_view origName) {
+    if (lowerName.size() < 4 || lowerName.substr(lowerName.size() - 4) != ".app") return {};
+
+    std::string bundlePath = SearchEngine::makeFullPath(path, origName);
+    CFURLRef url = CFURLCreateFromFileSystemRepresentation(
+        kCFAllocatorDefault,
+        reinterpret_cast<const UInt8*>(bundlePath.data()),
+        static_cast<CFIndex>(bundlePath.size()),
+        true);
+    if (!url) return {};
+
+    CFBundleRef bundle = CFBundleCreate(kCFAllocatorDefault, url);
+    CFRelease(url);
+    if (!bundle) return {};
+
+    CFStringRef displayNameKey = CFSTR("CFBundleDisplayName");
+    CFTypeRef displayName = CFBundleGetValueForInfoDictionaryKey(bundle, displayNameKey);
+    if (!displayName || CFGetTypeID(displayName) != CFStringGetTypeID()) {
+        displayName = CFBundleGetValueForInfoDictionaryKey(bundle, kCFBundleNameKey);
+    }
+    if (!displayName || CFGetTypeID(displayName) != CFStringGetTypeID()) {
+        CFRelease(bundle);
+        return {};
+    }
+
+    std::string result = cfStringToUtf8(static_cast<CFStringRef>(displayName));
+    CFRelease(bundle);
+    return result;
+}
+
+std::string appendSearchAlias(std::string base, std::string alias) {
+    alias = sanitizeSearchAlias(std::move(alias));
+    if (!alias.empty() && alias != base) {
+        base += kSearchAliasSeparator;
+        base += alias;
+    }
+    return base;
+}
+
+std::string makeSearchableName(std::string_view lowerName,
+                               std::string_view path,
+                               std::string_view origName) {
+    std::string displayName = readAppDisplayName(path, lowerName, origName);
+    return appendSearchAlias(std::string(lowerName), me::toLower(displayName));
+}
+
+std::string makeOriginalSearchableName(std::string_view lowerName,
+                                       std::string_view path,
+                                       std::string_view origName) {
+    std::string displayName = readAppDisplayName(path, lowerName, origName);
+    return appendSearchAlias(std::string(origName), std::move(displayName));
+}
+
+} // namespace
+
 uint32_t SearchEngine::internPath(const std::string& path) {
     auto it = pathLookup_.find(path);
     if (it != pathLookup_.end()) return it->second;
@@ -36,8 +113,8 @@ uint32_t SearchEngine::internPath(const std::string& path) {
 
 void SearchEngine::tombstoneAt(uint32_t idx) {
     if (shortQueryCache_.isBuilt()) {
-        const char* name = namePool_.data(idx);
-        uint16_t nameLen = namePool_.length(idx);
+        const char* name = searchableNamePool_.data(idx);
+        uint16_t nameLen = searchableNamePool_.length(idx);
         if (nameLen > 0) shortQueryCache_.eraseRecord(idx, name, nameLen);
     }
     types_[idx] = 0;
@@ -48,6 +125,34 @@ void SearchEngine::tombstoneAt(uint32_t idx) {
     if (idx < devIds_.size()) devIds_[idx] = 0;
     namePool_.tombstone(idx);
     origNamePool_.tombstone(idx);
+    searchableNamePool_.tombstone(idx);
+    originalSearchableNamePool_.tombstone(idx);
+}
+
+std::string SearchEngine::buildSearchableName(uint32_t idx) const {
+    return makeSearchableName(namePool_.view(idx), pathPool_.view(pathIndices_[idx]), origNamePool_.view(idx));
+}
+
+std::string SearchEngine::buildOriginalSearchableName(uint32_t idx) const {
+    return makeOriginalSearchableName(namePool_.view(idx), pathPool_.view(pathIndices_[idx]), origNamePool_.view(idx));
+}
+
+void SearchEngine::rebuildSearchableNamePools() {
+    std::vector<std::string> names(types_.size());
+    std::vector<std::string> originalNames(types_.size());
+    for (uint32_t i = 0; i < types_.size(); i++) {
+        if (types_[i] == 0) continue;
+        names[i] = buildSearchableName(i);
+        originalNames[i] = buildOriginalSearchableName(i);
+    }
+    searchableNamePool_.loadBulk(names);
+    originalSearchableNamePool_.loadBulk(originalNames);
+    for (uint32_t i = 0; i < types_.size(); i++) {
+        if (types_[i] == 0) {
+            searchableNamePool_.tombstone(i);
+            originalSearchableNamePool_.tombstone(i);
+        }
+    }
 }
 
 void SearchEngine::pushRecord(FileRecord&& rec) {
@@ -109,6 +214,8 @@ void SearchEngine::loadRecords(std::vector<FileRecord>&& records) {
         for (auto& th : threads) th.join();
     }
     namePool_.loadBulk(tempLowerNames);
+    searchableNamePool_.clear();
+    originalSearchableNamePool_.clear();
 
     // Path deduplication: intern paths into pathPool_ + lowerPathPool_ + pathLookup_
     pathPool_.clear();
@@ -166,6 +273,8 @@ void SearchEngine::loadRecords(std::vector<FileRecord>&& records) {
         }
     }
 
+    rebuildSearchableNamePools();
+
     // Build trigram index for fast filename search
     buildTrigramIndex();
     // Build path trigram index for fast path-only search
@@ -217,6 +326,8 @@ void SearchEngine::loadRecordsV5(std::vector<FileRecord>&& records,
 
     // Install pre-lowered names directly into namePool_ (skip parallel toLower)
     namePool_.loadBulk(lowerNames);
+    searchableNamePool_.clear();
+    originalSearchableNamePool_.clear();
 
     // Install pre-built path dictionaries (skip path dedup + internPath loop)
     pathPool_ = std::move(pathDict);
@@ -279,6 +390,8 @@ void SearchEngine::loadRecordsV5(std::vector<FileRecord>&& records,
             tombstoneAt(static_cast<uint32_t>(i));
         }
     }
+
+    rebuildSearchableNamePools();
 
     // Build trigram index for fast filename search
     buildTrigramIndex();
@@ -352,10 +465,12 @@ uint32_t SearchEngine::addRecord(FileRecord&& record) {
     (void)nameIdx; // nameIdx == idx since namePool_ grows in lockstep
     pathIndices_.push_back(pIdx);
     pathIndex_[lowerFull] = idx;
+    searchableNamePool_.append(buildSearchableName(idx));
+    originalSearchableNamePool_.append(buildOriginalSearchableName(idx));
 
     // Update trigram index (skip during Phase 2 — completePhase2 replay handles it)
     if (!phase2Pending_.load(std::memory_order_relaxed)) {
-        addTrigramsForRecord(idx, namePool_.data(idx), namePool_.length(idx));
+        addTrigramsForRecord(idx, searchableNamePool_.data(idx), searchableNamePool_.length(idx));
         addPathTrigramsForRecord(idx);
         addExtensionForRecord(idx);
     }
@@ -370,11 +485,11 @@ uint32_t SearchEngine::addRecord(FileRecord&& record) {
     addToRecentCache(idx, static_cast<time_t>(modTimes_[idx]));
 
     if (shortQueryCache_.isBuilt()) {
-        const char* nd = namePool_.data(idx);
-        uint16_t nl = namePool_.length(idx);
+        const char* nd = searchableNamePool_.data(idx);
+        uint16_t nl = searchableNamePool_.length(idx);
         uint32_t pi = pathIndices_.back();
         uint16_t pl = lowerPathPool_.length(pi);
-        shortQueryCache_.tryInsert(idx, nd, nl, static_cast<uint32_t>(pl) + 1 + nl);
+        shortQueryCache_.tryInsert(idx, nd, nl, static_cast<uint32_t>(pl) + 1 + namePool_.length(idx));
     }
 
     return idx;
@@ -494,8 +609,10 @@ uint32_t SearchEngine::batchRescanPrefix(const std::string& pathPrefix,
         namePool_.append(lower);
         pathIndices_.push_back(pIdx);
         pathIndex_[me::toLower(fullPath)] = newIdx;
+        searchableNamePool_.append(buildSearchableName(newIdx));
+        originalSearchableNamePool_.append(buildOriginalSearchableName(newIdx));
         if (!phase2Pending_.load(std::memory_order_relaxed)) {
-            addTrigramsForRecord(newIdx, namePool_.data(newIdx), namePool_.length(newIdx));
+            addTrigramsForRecord(newIdx, searchableNamePool_.data(newIdx), searchableNamePool_.length(newIdx));
             addPathTrigramsForRecord(newIdx);
             addExtensionForRecord(newIdx);
         }
@@ -549,8 +666,10 @@ void SearchEngine::updateByPathUnlocked(const std::string& fullPath, FileRecord&
     namePool_.append(lower);
     pathIndices_.push_back(pIdx);
     pathIndex_[me::toLower(newFullPath)] = newIdx;
+    searchableNamePool_.append(buildSearchableName(newIdx));
+    originalSearchableNamePool_.append(buildOriginalSearchableName(newIdx));
     if (!phase2Pending_.load(std::memory_order_relaxed)) {
-        addTrigramsForRecord(newIdx, namePool_.data(newIdx), namePool_.length(newIdx));
+        addTrigramsForRecord(newIdx, searchableNamePool_.data(newIdx), searchableNamePool_.length(newIdx));
         addPathTrigramsForRecord(newIdx);
         addExtensionForRecord(newIdx);
     }
@@ -560,6 +679,13 @@ void SearchEngine::updateByPathUnlocked(const std::string& fullPath, FileRecord&
     markPageDirty(newIdx);
     liveCount_.fetch_add(1, std::memory_order_relaxed);
     addToRecentCache(newIdx, static_cast<time_t>(modTimes_[newIdx]));
+
+    if (shortQueryCache_.isBuilt()) {
+        const char* nd = searchableNamePool_.data(newIdx);
+        uint16_t nl = searchableNamePool_.length(newIdx);
+        uint16_t pl = lowerPathPool_.length(pIdx);
+        shortQueryCache_.tryInsert(newIdx, nd, nl, static_cast<uint32_t>(pl) + 1 + namePool_.length(newIdx));
+    }
 }
 
 void SearchEngine::updateByPath(const std::string& fullPath, FileRecord&& updated) {
@@ -682,8 +808,32 @@ std::unordered_map<uint32_t, uint32_t> SearchEngine::compactRecords() {
     }
     uint32_t cdLiveCount = static_cast<uint32_t>(cdTypes.size());
 
+    StringPool cdSearchableNamePool;
+    {
+        std::vector<std::string> cdSearchableNames(cdTypes.size());
+        for (uint32_t i = 0; i < cdTypes.size(); i++) {
+            if (cdTypes[i] == 0) continue;
+            cdSearchableNames[i] = makeSearchableName(cdNamePool.view(i),
+                                                       cdPathPool.view(cdPathIndices[i]),
+                                                       cdOrigNamePool.view(i));
+        }
+        cdSearchableNamePool.loadBulk(cdSearchableNames);
+    }
+
+    StringPool cdOriginalSearchableNamePool;
+    {
+        std::vector<std::string> cdOriginalSearchableNames(cdTypes.size());
+        for (uint32_t i = 0; i < cdTypes.size(); i++) {
+            if (cdTypes[i] == 0) continue;
+            cdOriginalSearchableNames[i] = makeOriginalSearchableName(cdNamePool.view(i),
+                                                                       cdPathPool.view(cdPathIndices[i]),
+                                                                       cdOrigNamePool.view(i));
+        }
+        cdOriginalSearchableNamePool.loadBulk(cdOriginalSearchableNames);
+    }
+
     // Build trigram index, path trigram index, extension index, and recent cache outside any lock
-    auto cdTrigramIndex = buildTrigramIndexFromData(cdTypes, cdNamePool);
+    auto cdTrigramIndex = buildTrigramIndexFromData(cdTypes, cdSearchableNamePool);
     auto cdPathTrigramIndex = buildPathTrigramIndexFromData(cdLowerPathPool);
     auto cdPathIdxToRecords = buildPathIdxToRecordsFromData(cdTypes, cdPathIndices, cdPathPool.entryCount());
     auto cdExtensionIndex = buildExtensionIndexFromData(cdTypes, cdNamePool);
@@ -720,6 +870,8 @@ std::unordered_map<uint32_t, uint32_t> SearchEngine::compactRecords() {
         devIds_ = std::move(cdDevIds);
         origNamePool_ = std::move(cdOrigNamePool);
         namePool_ = std::move(cdNamePool);
+        searchableNamePool_ = std::move(cdSearchableNamePool);
+        originalSearchableNamePool_ = std::move(cdOriginalSearchableNamePool);
         pathIndices_ = std::move(cdPathIndices);
         pathPool_ = std::move(cdPathPool);
         lowerPathPool_ = std::move(cdLowerPathPool);
@@ -749,7 +901,9 @@ std::unordered_map<uint32_t, uint32_t> SearchEngine::compactRecords() {
             namePool_.append(oldNamePool.data(i), oldNamePool.length(i));
             pathIndex_[fullPath] = newIdx;
             pathIndices_.push_back(pIdx);
-            addTrigramsForRecord(newIdx, namePool_.data(newIdx), namePool_.length(newIdx));
+            searchableNamePool_.append(buildSearchableName(newIdx));
+            originalSearchableNamePool_.append(buildOriginalSearchableName(newIdx));
+            addTrigramsForRecord(newIdx, searchableNamePool_.data(newIdx), searchableNamePool_.length(newIdx));
             addToRecentCache(newIdx, static_cast<time_t>(oldModTimes[i]));
             // Push SoA columns for replayed record
             types_.push_back(oldTypes[i]);
@@ -906,7 +1060,9 @@ void SearchEngine::replayWALEntries(std::vector<WALEntry>&& entries) {
             namePool_.append(lower);
             pathIndices_.push_back(pIdx);
             pathIndex_[lowerFull] = idx;
-            addTrigramsForRecord(idx, namePool_.data(idx), namePool_.length(idx));
+            searchableNamePool_.append(buildSearchableName(idx));
+            originalSearchableNamePool_.append(buildOriginalSearchableName(idx));
+            addTrigramsForRecord(idx, searchableNamePool_.data(idx), searchableNamePool_.length(idx));
             addPathTrigramsForRecord(idx);
             addExtensionForRecord(idx);
             if (idx / kRecordsPerPage >= dirtyPages_.size()) {
@@ -914,6 +1070,12 @@ void SearchEngine::replayWALEntries(std::vector<WALEntry>&& entries) {
             }
             markPageDirty(idx);
             liveCount_.fetch_add(1, std::memory_order_relaxed);
+            if (shortQueryCache_.isBuilt()) {
+                const char* nd = searchableNamePool_.data(idx);
+                uint16_t nl = searchableNamePool_.length(idx);
+                uint16_t pl = lowerPathPool_.length(pIdx);
+                shortQueryCache_.tryInsert(idx, nd, nl, static_cast<uint32_t>(pl) + 1 + namePool_.length(idx));
+            }
             break;
         }
         case WALOp::Remove: {
@@ -955,7 +1117,9 @@ void SearchEngine::replayWALEntries(std::vector<WALEntry>&& entries) {
             namePool_.append(lower);
             pathIndices_.push_back(pIdx);
             pathIndex_[lowerFull] = newIdx;
-            addTrigramsForRecord(newIdx, namePool_.data(newIdx), namePool_.length(newIdx));
+            searchableNamePool_.append(buildSearchableName(newIdx));
+            originalSearchableNamePool_.append(buildOriginalSearchableName(newIdx));
+            addTrigramsForRecord(newIdx, searchableNamePool_.data(newIdx), searchableNamePool_.length(newIdx));
             addPathTrigramsForRecord(newIdx);
             addExtensionForRecord(newIdx);
             if (newIdx / kRecordsPerPage >= dirtyPages_.size()) {
@@ -963,6 +1127,12 @@ void SearchEngine::replayWALEntries(std::vector<WALEntry>&& entries) {
             }
             markPageDirty(newIdx);
             liveCount_.fetch_add(1, std::memory_order_relaxed);
+            if (shortQueryCache_.isBuilt()) {
+                const char* nd = searchableNamePool_.data(newIdx);
+                uint16_t nl = searchableNamePool_.length(newIdx);
+                uint16_t pl = lowerPathPool_.length(pIdx);
+                shortQueryCache_.tryInsert(newIdx, nd, nl, static_cast<uint32_t>(pl) + 1 + namePool_.length(newIdx));
+            }
             break;
         }
         }
