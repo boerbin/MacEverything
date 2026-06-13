@@ -40,10 +40,6 @@ uint64_t IndexPersistence::load() {
             lastEventId = meta.lastEventId;
             LOG_INFO("IndexPersistence", "Loaded v6 flat index, lastEventId=" << lastEventId
                       << ", liveRecords=" << engine_->liveRecordCount());
-            std::string cachePath = v6Path_ + ".sqcache";
-            if (engine_->getShortQueryCache().loadFrom(cachePath)) {
-                LOG_INFO("IndexPersistence", "Loaded short query cache from disk");
-            }
         } else {
             LOG_ERROR("IndexPersistence", "v6 flat index corrupt, trying paged format");
         }
@@ -190,19 +186,12 @@ void IndexPersistence::flush(const IndexMetadata& metadata, bool force) {
         std::chrono::steady_clock::now() - rewriteStart).count();
 
     if (writeOk) {
-        // Save short query cache alongside the index
-        auto cacheStart = std::chrono::steady_clock::now();
-        std::string cachePath = v6Path_ + ".sqcache";
-        engine_->getShortQueryCache().saveTo(cachePath);
-        auto cacheMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - cacheStart).count();
-
         auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - flushStart).count();
         LOG_INFO("IndexPersistence", "Flushed v6 flat index, lastEventId=" << metadata.lastEventId
                   << ", liveRecords=" << engine_->liveRecordCount()
                   << " | timing: walSwap=" << walSwapMs << "ms rewrite=" << rewriteMs
-                  << "ms sqcache=" << cacheMs << "ms total=" << totalMs << "ms");
+                  << "ms total=" << totalMs << "ms");
     } else {
         LOG_ERROR("IndexPersistence", "Failed to flush paged index — keeping old WAL for recovery");
         if (oldWal) oldWal->close();

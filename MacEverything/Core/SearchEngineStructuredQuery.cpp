@@ -8,6 +8,26 @@
 #include <unordered_set>
 #include <dispatch/dispatch.h>
 
+namespace {
+
+bool structuredNameMatches(QueryMode mode,
+                           uint8_t type,
+                           const char* canonicalNameData,
+                           uint16_t canonicalNameLen,
+                           const char* searchableNameData,
+                           uint16_t searchableNameLen,
+                           const std::string& namePattern) {
+    if (mode == QueryMode::DIR_EXACT) {
+        if (type != 2) return false;
+        if (canonicalNameLen != namePattern.size()) return false;
+        return std::memcmp(canonicalNameData, namePattern.data(), canonicalNameLen) == 0;
+    }
+    return me::simdContains(searchableNameData, searchableNameLen,
+                            namePattern.data(), namePattern.size());
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // pathSegmentsMatch: check if dirPath satisfies path segment constraints
 // ---------------------------------------------------------------------------
@@ -99,16 +119,12 @@ void SearchEngine::treeWalkDown(uint32_t dirIdx, const ParsedQuery& pq,
             if (types_[childIdx] == 0) continue;
             const char* nd = namePool_.data(childIdx);
             uint16_t nl = namePool_.length(childIdx);
+            const char* snd = searchableNamePool_.data(childIdx);
+            uint16_t snl = searchableNamePool_.length(childIdx);
 
-            if (pq.mode == QueryMode::DIR_EXACT) {
-                if (types_[childIdx] != 2) continue;
-                if (nl != namePattern.size()) continue;
-                if (std::memcmp(nd, namePattern.data(), nl) != 0) continue;
-            } else {
-                if (!me::simdContains(nd, nl, namePattern.data(), namePattern.size())) continue;
-            }
+            if (!structuredNameMatches(pq.mode, types_[childIdx], nd, nl, snd, snl, namePattern)) continue;
 
-            uint8_t priority = namePriority(nd, nl, namePattern.data(), namePattern.size());
+            uint8_t priority = searchableNamePriority(snd, snl, namePattern.data(), namePattern.size());
             uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[childIdx]) + 1 + nl);
             merged.push_back({childIdx, encodeScore(priority, pLen)});
         }
@@ -165,7 +181,7 @@ void SearchEngine::queryStructured(const ParsedQuery& pq,
     // ------------------------------------------------------------------
     // Only nameCost==0 guarantees zero results (namePattern must match a file name).
     // Path segment cost==0 just means that segment text isn't indexed as a name.
-    if (nameCost == 0) return;
+    if (nameCost == 0 && namePattern.size() >= 3) return;
 
     if (bestCost <= trigramThreshold) {
         if (bestIdx == numPathSegs) {
@@ -211,16 +227,12 @@ void SearchEngine::queryStructured(const ParsedQuery& pq,
 
                 const char* nd = namePool_.data(idx);
                 uint16_t nl = namePool_.length(idx);
+                const char* snd = searchableNamePool_.data(idx);
+                uint16_t snl = searchableNamePool_.length(idx);
 
-                if (pq.mode == QueryMode::DIR_EXACT) {
-                    if (types_[idx] != 2) continue;
-                    if (nl != namePattern.size()) continue;
-                    if (std::memcmp(nd, namePattern.data(), nl) != 0) continue;
-                } else {
-                    if (!me::simdContains(nd, nl, namePattern.data(), namePattern.size())) continue;
-                }
+                if (!structuredNameMatches(pq.mode, types_[idx], nd, nl, snd, snl, namePattern)) continue;
 
-                uint8_t priority = namePriority(nd, nl, namePattern.data(), namePattern.size());
+                uint8_t priority = searchableNamePriority(snd, snl, namePattern.data(), namePattern.size());
                 uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[idx]) + 1 + nl);
                 merged.push_back({idx, encodeScore(priority, pLen)});
             }
@@ -256,16 +268,16 @@ void SearchEngine::queryStructured(const ParsedQuery& pq,
             }
         }
     } else {
-        // No path segments: buffer-scan the contiguous namePool_ buffer
+        // No path segments: buffer-scan the contiguous searchableNamePool_ buffer
         // with SIMD, then resolve byte offsets → record indices.
         std::vector<size_t> hitOffsets;
-        me::simdFindAll(namePool_.rawBuffer(), namePool_.rawSize(),
+        me::simdFindAll(searchableNamePool_.rawBuffer(), searchableNamePool_.rawSize(),
                         namePattern.data(), namePattern.size(), hitOffsets);
 
         if (cancel.cancelled()) return;
 
-        const auto* entries = namePool_.entries();
-        uint32_t entryCount = namePool_.entryCount();
+        const auto* entries = searchableNamePool_.entries();
+        uint32_t entryCount = searchableNamePool_.entryCount();
 
         // hitOffsets are in ascending order. Walk cursor in sync — O(hits + entries).
         uint32_t cursor = 0;
@@ -289,12 +301,15 @@ void SearchEngine::queryStructured(const ParsedQuery& pq,
 
             if (pq.mode == QueryMode::DIR_EXACT) {
                 if (types_[cursor] != 2) continue;
-                if (entries[cursor].length != namePattern.size()) continue;
+                uint16_t canonicalNameLen = namePool_.length(cursor);
+                if (canonicalNameLen != namePattern.size()) continue;
+                const char* canonicalNameData = namePool_.data(cursor);
+                if (std::memcmp(canonicalNameData, namePattern.data(), canonicalNameLen) != 0) continue;
             }
 
-            uint8_t priority = namePriority(namePool_.data(cursor), namePool_.length(cursor),
+            uint8_t priority = searchableNamePriority(searchableNamePool_.data(cursor), searchableNamePool_.length(cursor),
                                              namePattern.data(), namePattern.size());
-            uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[cursor]) + 1 + entries[cursor].length);
+            uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[cursor]) + 1 + namePool_.length(cursor));
             merged.push_back({cursor, encodeScore(priority, pLen)});
         }
     }
@@ -319,20 +334,17 @@ bool SearchEngine::queryStructuredNameAnchor(const ParsedQuery& pq,
 
         const char* nameData = namePool_.data(idx);
         uint16_t nameLen = namePool_.length(idx);
+        const char* searchableNameData = searchableNamePool_.data(idx);
+        uint16_t searchableNameLen = searchableNamePool_.length(idx);
 
-        if (pq.mode == QueryMode::DIR_EXACT) {
-            if (types_[idx] != 2) continue;
-            if (nameLen != namePattern.size()) continue;
-            if (std::memcmp(nameData, namePattern.data(), nameLen) != 0) continue;
-        } else {
-            if (!me::simdContains(nameData, nameLen, namePattern.data(), namePattern.size())) continue;
-        }
+        if (!structuredNameMatches(pq.mode, types_[idx], nameData, nameLen,
+                                   searchableNameData, searchableNameLen, namePattern)) continue;
 
         if (!pq.pathSegments.empty()) {
             if (!pathSegmentsMatch(lowerPathPool_.view(pathIndices_[idx]), pq.pathSegments)) continue;
         }
 
-        uint8_t priority = namePriority(nameData, nameLen, namePattern.data(), namePattern.size());
+        uint8_t priority = searchableNamePriority(searchableNameData, searchableNameLen, namePattern.data(), namePattern.size());
         uint32_t pLen = static_cast<uint32_t>(pathPool_.length(pathIndices_[idx]) + 1 + nameLen);
         merged.push_back({idx, encodeScore(priority, pLen)});
     }

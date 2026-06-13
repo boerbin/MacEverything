@@ -378,7 +378,9 @@ public:
 
 private:
     StringPool origNamePool_;              // contiguous original-case filenames (for v6 persistence)
-    StringPool namePool_;                  // contiguous lowercase filenames
+    StringPool namePool_;                  // contiguous lowercase filesystem filenames
+    StringPool searchableNamePool_;        // lowercase filename plus display-name aliases for search only
+    StringPool originalSearchableNamePool_; // original-case filename plus display-name aliases for case-sensitive search
     std::vector<uint32_t> pathIndices_;    // per-record index into pathPool_
     StringPool pathPool_;                  // contiguous directory paths (deduplicated)
     StringPool lowerPathPool_;             // parallel to pathPool_, stores pre-lowered paths
@@ -419,8 +421,13 @@ private:
     bool removeByPathUnlocked(const std::string& fullPath);
     void updateByPathUnlocked(const std::string& fullPath, FileRecord&& updated);
 
-    /// Build trigram index from namePool_ (called inside loadRecords/compactRecords under lock)
+    /// Build trigram index from searchableNamePool_ (called inside loadRecords/compactRecords under lock)
     void buildTrigramIndex();
+    /// Build/update the search-only filename+alias text for a record.
+    std::string buildSearchableName(uint32_t idx) const;
+    std::string buildOriginalSearchableName(uint32_t idx) const;
+    /// Rebuild search-only name pools from current canonical record data.
+    void rebuildSearchableNamePools();
     /// Add trigrams for a single record to the index
     void addTrigramsForRecord(uint32_t idx, const char* data, uint16_t len);
     /// Remove trigrams for a single record from the index
@@ -536,6 +543,8 @@ private:
     /// Compute match priority: 0=exact, 1=starts-with, 2=contains.
     static uint8_t namePriority(const char* nameData, uint16_t nameLen,
                                 const char* keyData, size_t keyLen);
+    static uint8_t searchableNamePriority(const char* nameData, uint16_t nameLen,
+                                          const char* keyData, size_t keyLen);
 
     /// Intersect posting lists from a trigram index for a given keyword.
     /// Returns sorted candidate indices, or empty if any trigram is missing.
