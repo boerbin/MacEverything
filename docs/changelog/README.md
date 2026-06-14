@@ -170,6 +170,7 @@
 | [184](184-release-v1.4.md) | release | 发布 v1.4：搜索输入延迟修复(P0-P3)、内存优化(issue #3)、文档完善、测试增强 | 2026-06-05 |
 | [185](185-fix-ime-composition-guard.md) | bugfix | 修复中文输入法组合态刷新丢键：阻断 textDidChange/updateNSView/applyHighlighting 对 marked text 的干扰 | 2026-06-10 |
 | [186](186-fix-app-display-name-search.md) | bugfix | 修复 macOS app bundle Finder 显示名不可搜索：用 search-only alias pool 索引 CFBundleDisplayName/CFBundleName | 2026-06-13 |
+| [187](187-release-v1.5.md) | release | 发布 v1.5：中文 IME 组合态保护、app Finder 显示名搜索、v1.4 后性能观测报告 | 2026-06-14 |
 
 ## 统计
 
@@ -178,12 +179,13 @@
 | bugfix | 56 |
 | feature | 38 |
 | performance | 31 |
+| perf | 1 |
 | refactor | 18 |
 | test | 6 |
 | docs | 10 |
 | chore | 1 |
-| release | 1 |
-| **合计** | **161 条 (154 个编号, 7 组重复编号各 2 条)** |
+| release | 2 |
+| **合计** | **163 条 (156 个编号, 7 组重复编号各 2 条)** |
 
 ---
 
@@ -206,3 +208,4 @@
 | 2026-06-05 | 2 |
 | 2026-06-10 | 1 |
 | 2026-06-13 | 1 |
+| 2026-06-14 | 1 |
