@@ -23,9 +23,10 @@ LLAMA_LDFLAGS = -framework Metal -framework MetalKit -framework Accelerate
 	$(CXX) $(CXXFLAGS) $(RE2_CFLAGS) -fobjc-arc -IMacEverything/Core -c $< -o $@
 
 CORE_MM_OBJS = $(CORE_MM_SRCS:.mm=.o)
+TEST_HEADERS = $(wildcard tests/*.h)
 
-test_all: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
-	$(CXX) $(CXXFLAGS) -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o $@
+test_all: test_all.cpp $(TEST_HEADERS) $(CORE_SRCS) $(CORE_MM_OBJS)
+	$(CXX) $(CXXFLAGS) -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS) $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o $@
 
 benchmark: benchmark.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
 	$(CXX) $(CXXFLAGS) $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o $@
@@ -43,12 +44,12 @@ lint-bridge:
 		MacEverything/Bridge/MacSearchBridge+Content.mm
 
 # === Sanitizer targets ===
-test-asan: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
-	$(CXX) -std=c++20 -O1 -g -fsanitize=address -fno-omit-frame-pointer -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o test_all_asan
+test-asan: test_all.cpp $(TEST_HEADERS) $(CORE_SRCS) $(CORE_MM_OBJS)
+	$(CXX) -std=c++20 -O1 -g -fsanitize=address -fno-omit-frame-pointer -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS) $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o test_all_asan
 	./test_all_asan --fast
 
-test-tsan: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
-	$(CXX) -std=c++20 -O1 -g -fsanitize=thread -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o test_all_tsan
+test-tsan: test_all.cpp $(TEST_HEADERS) $(CORE_SRCS) $(CORE_MM_OBJS)
+	$(CXX) -std=c++20 -O1 -g -fsanitize=thread -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS) $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o test_all_tsan
 	./test_all_tsan --fast
 
 # === Test targets ===
