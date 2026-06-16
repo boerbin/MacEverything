@@ -135,6 +135,10 @@ public:
     /// Whether Phase 2 is pending (trigram indices not yet built).
     bool isPhase2Pending() const { return phase2Pending_.load(std::memory_order_acquire); }
 
+#ifdef MACEVERYTHING_TESTING
+    static void setPhase2PostSnapshotHook(void (*hook)());
+#endif
+
     /// Build short query cache (call after Phase 2 or compaction, under shared_lock).
     void buildShortQueryCache();
 
@@ -426,8 +430,14 @@ private:
     /// Build/update the search-only filename+alias text for a record.
     std::string buildSearchableName(uint32_t idx) const;
     std::string buildOriginalSearchableName(uint32_t idx) const;
+    static std::string buildSearchableNameFromParts(std::string_view lowerName,
+                                                    std::string_view path,
+                                                    std::string_view origName);
+    static std::string buildOriginalSearchableNameFromParts(std::string_view lowerName,
+                                                            std::string_view path,
+                                                            std::string_view origName);
     /// Rebuild search-only name pools from current canonical record data.
-    void rebuildSearchableNamePools();
+    void rebuildSearchableNamePools(bool includeAliases = true);
     /// Add trigrams for a single record to the index
     void addTrigramsForRecord(uint32_t idx, const char* data, uint16_t len);
     /// Remove trigrams for a single record from the index

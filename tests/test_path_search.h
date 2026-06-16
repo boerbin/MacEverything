@@ -284,8 +284,132 @@ static void runLowerPathPoolTests() {
         malformedEngine.loadRecords(std::move(malformedRecords));
         auto malformedResults = malformedEngine.query("BadMetadata");
         check(malformedResults.size() == 1, "app display-name: malformed plist keeps filesystem search working");
-        auto ignoredBadAliasResults = malformedEngine.query("42");
+        auto ignoredBadAliasResults = malformedEngine.query("424242424242");
         check(ignoredBadAliasResults.empty(), "app display-name: non-string display metadata is ignored");
+
+        fs::create_directories(tmpDir / "NameOnly.app" / "Contents");
+        std::ofstream nameOnlyPlist(tmpDir / "NameOnly.app" / "Contents" / "Info.plist");
+        nameOnlyPlist << R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Name Only Display</string>
+</dict>
+</plist>
+)";
+        nameOnlyPlist.close();
+
+        SearchEngine nameOnlyEngine;
+        std::vector<FileRecord> nameOnlyRecords;
+        nameOnlyRecords.push_back({"NameOnly.app", tmpDir.string(), 5, 0, 1000});
+        nameOnlyEngine.loadRecords(std::move(nameOnlyRecords));
+        auto nameOnlyResults = nameOnlyEngine.query("Name Only Display");
+        check(nameOnlyResults.size() == 1, "app display-name: CFBundleName fallback matches when display name is absent");
+
+        fs::create_directories(tmpDir / "Localized.app" / "Contents" / "Resources" / "fr.lproj");
+        std::ofstream localizedPlist(tmpDir / "Localized.app" / "Contents" / "Info.plist");
+        localizedPlist << R"(<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Base Localized Name</string>
+</dict>
+</plist>
+)";
+        localizedPlist.close();
+        std::ofstream localizedStrings(tmpDir / "Localized.app" / "Contents" / "Resources" / "fr.lproj" / "InfoPlist.strings");
+        localizedStrings << R"("CFBundleDisplayName" = "Nom Localisé";
+)";
+        localizedStrings.close();
+
+        SearchEngine localizedEngine;
+        std::vector<FileRecord> localizedRecords;
+        localizedRecords.push_back({"Localized.app", tmpDir.string(), 5, 0, 1000});
+        localizedEngine.loadRecords(std::move(localizedRecords));
+        auto localizedResults = localizedEngine.query("Nom Localisé");
+        check(localizedResults.size() == 1, "app display-name: enumerated localized InfoPlist.strings display name matches");
+
+        fs::create_directories(tmpDir / "PhaseTwoDir");
+        SearchEngine persistedSource;
+        std::vector<FileRecord> persistedRecords;
+        persistedRecords.push_back({"WebPomodoro.app", tmpDir.string(), 5, 0, 1000});
+        persistedRecords.push_back({"DeletedSnapshot.app", (tmpDir / "PhaseTwoDir").string(), 5, 0, 100000});
+        for (int i = 0; i < 201; i++) {
+            persistedRecords.push_back({"RecentBackfill" + std::to_string(i) + ".dat", tmpDir.string(), 1, 1, 90000 - i});
+        }
+        for (int i = 0; i < 20000; i++) {
+            persistedRecords.push_back({"PhaseTwoLoad" + std::to_string(i) + ".dat", tmpDir.string(), 1, 1, 1000 + i});
+        }
+        persistedSource.loadRecords(std::move(persistedRecords));
+        auto snap = persistedSource.snapshotForV6();
+
+        SearchEngine persistedEngine;
+        persistedEngine.loadRecordsV6(std::move(snap.origNamePool), std::move(snap.namePool), std::move(snap.pathIndices),
+                                      std::move(snap.pathPool), std::move(snap.lowerPathPool), std::move(snap.types),
+                                      std::move(snap.sizes), std::move(snap.modTimes), std::move(snap.inodes), std::move(snap.devIds));
+        auto deferredAliasBeforePhase2 = persistedEngine.query("Focus To-Do");
+        check(deferredAliasBeforePhase2.empty(), "app display-name: v6 startup defers display alias filesystem reads before Phase 2");
+        static std::mutex phase2HookMutex;
+        static std::condition_variable phase2SnapshotReady;
+        static std::condition_variable phase2MayContinue;
+        static bool phase2SnapshotReached = false;
+        static bool phase2Continue = false;
+        phase2SnapshotReached = false;
+        phase2Continue = false;
+        SearchEngine::setPhase2PostSnapshotHook([] {
+            std::unique_lock<std::mutex> lock(phase2HookMutex);
+            phase2SnapshotReached = true;
+            phase2SnapshotReady.notify_one();
+            phase2MayContinue.wait(lock, [] { return phase2Continue; });
+        });
+        std::thread phase2Thread([&] {
+            persistedEngine.completePhase2();
+        });
+        {
+            std::unique_lock<std::mutex> lock(phase2HookMutex);
+            phase2SnapshotReady.wait(lock, [] { return phase2SnapshotReached; });
+        }
+        persistedEngine.removeByPath((tmpDir / "PhaseTwoDir" / "DeletedSnapshot.app").string());
+        persistedEngine.addRecord({"DeletedDuringPhase2.app", tmpDir.string(), 5, 0, 2000});
+        persistedEngine.removeByPath((tmpDir / "DeletedDuringPhase2.app").string());
+        fs::create_directories(tmpDir / "NewPhaseTwoPath");
+        persistedEngine.addRecord({"LiveDuringPhase2.app", (tmpDir / "NewPhaseTwoPath").string(), 5, 0, 3000});
+        {
+            std::lock_guard<std::mutex> lock(phase2HookMutex);
+            phase2Continue = true;
+        }
+        phase2MayContinue.notify_one();
+        phase2Thread.join();
+        SearchEngine::setPhase2PostSnapshotHook(nullptr);
+        auto deferredAliasAfterPhase2 = persistedEngine.query("Focus To-Do");
+        check(deferredAliasAfterPhase2.size() == 1, "app display-name: v6 Phase 2 rebuilds display alias search data");
+        auto replayGapResults = persistedEngine.query("LiveDuringPhase2");
+        check(replayGapResults.size() == 1, "app display-name: v6 Phase 2 replay keeps searchable-name pool aligned across deleted additions");
+        QueryTimingInfo newPathTiming;
+        auto replayNewPathResults = persistedEngine.queryAdvanced("newphasetwopath/LiveDuringPhase2", 100, true, newPathTiming);
+        check(replayNewPathResults.size() == 1, "app display-name: v6 Phase 2 replay restores path trigram index for added paths");
+        auto recentAfterPhase2 = persistedEngine.recentIndices(200);
+        bool recentIncludesDeletedSnapshot = false;
+        bool recentIncludesBackfilledRecord = false;
+        for (uint32_t idx : recentAfterPhase2) {
+            auto rec = persistedEngine.getRecord(idx);
+            if (rec.name == "DeletedSnapshot.app") recentIncludesDeletedSnapshot = true;
+            if (rec.name == "RecentBackfill1.dat") recentIncludesBackfilledRecord = true;
+        }
+        check(recentAfterPhase2.size() == 200 && !recentIncludesDeletedSnapshot,
+              "app display-name: v6 Phase 2 tombstone replay removes stale recent-cache entries");
+        check(recentIncludesBackfilledRecord,
+              "app display-name: v6 Phase 2 tombstone replay backfills bounded recent cache");
+        QueryTimingInfo extTiming;
+        auto extAfterPhase2 = persistedEngine.queryAdvanced("ext:app", 100, true, extTiming);
+        check(extAfterPhase2.size() == 2, "app display-name: v6 Phase 2 tombstone replay removes stale extension-index results");
+        check(extTiming.candidates == 2, "app display-name: v6 Phase 2 tombstone replay removes stale extension-index candidates");
+        QueryTimingInfo pathTiming;
+        auto pathAfterPhase2 = persistedEngine.queryAdvanced("phasetwodir", 100, true, pathTiming);
+        check(pathAfterPhase2.empty(), "app display-name: v6 Phase 2 tombstone replay removes stale path-index results");
+        check(pathTiming.candidates == 0, "app display-name: v6 Phase 2 tombstone replay removes stale path-index candidates");
 
         fs::remove_all(tmpDir);
     }

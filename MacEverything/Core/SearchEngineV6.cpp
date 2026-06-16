@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#ifdef MACEVERYTHING_TESTING
+#include <atomic>
+#endif
 #ifdef __APPLE__
 #include <mach/mach.h>
 #endif
@@ -11,6 +14,16 @@
 // ---------------------------------------------------------------------------
 // v6 Flat SoA: loadRecordsV6, completePhase2, snapshotForV6
 // ---------------------------------------------------------------------------
+
+#ifdef MACEVERYTHING_TESTING
+namespace {
+std::atomic<void (*)()> gPhase2PostSnapshotHook{nullptr};
+}
+
+void SearchEngine::setPhase2PostSnapshotHook(void (*hook)()) {
+    gPhase2PostSnapshotHook.store(hook, std::memory_order_release);
+}
+#endif
 
 void SearchEngine::loadRecordsV6(StringPool&& origNamePool,
                                   StringPool&& namePool,
@@ -101,7 +114,7 @@ void SearchEngine::loadRecordsV6(StringPool&& origNamePool,
         }
     }
 
-    rebuildSearchableNamePools();
+    rebuildSearchableNamePools(false);
 
     liveCount_.store(actualLive, std::memory_order_relaxed);
 
@@ -154,8 +167,9 @@ std::string SearchEngine::completePhase2() {
     // Snapshot data needed for building indices (under shared lock)
     std::vector<uint8_t> snapTypes;
     std::vector<int64_t> snapModTimes;
+    StringPool snapOrigNamePool;
     StringPool snapNamePool;
-    StringPool snapSearchableNamePool;
+    StringPool snapPathPool;
     StringPool snapLowerPathPool;
     std::vector<uint32_t> snapPathIndices;
     uint32_t snapPathPoolSize;
@@ -165,18 +179,51 @@ std::string SearchEngine::completePhase2() {
         std::shared_lock lock(mutex_);
         snapTypes = types_;
         snapModTimes = modTimes_;
+        snapOrigNamePool = origNamePool_;
         snapNamePool = namePool_;
-        snapSearchableNamePool = searchableNamePool_;
+        snapPathPool = pathPool_;
         snapLowerPathPool = lowerPathPool_;
         snapPathIndices = pathIndices_;
         snapPathPoolSize = pathPool_.entryCount();
         snapSize = static_cast<uint32_t>(types_.size());
     }
+#ifdef MACEVERYTHING_TESTING
+    if (auto hook = gPhase2PostSnapshotHook.load(std::memory_order_acquire)) {
+        hook();
+    }
+#endif
     auto snapMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - snapStart).count();
 
     // Build all indices without holding any lock
     auto t0 = std::chrono::steady_clock::now();
+    StringPool snapSearchableNamePool;
+    StringPool snapOriginalSearchableNamePool;
+    {
+        std::vector<std::string> searchableNames(snapTypes.size());
+        std::vector<std::string> originalSearchableNames(snapTypes.size());
+        for (uint32_t i = 0; i < snapTypes.size(); i++) {
+            if (snapTypes[i] == 0) continue;
+            searchableNames[i] = buildSearchableNameFromParts(snapNamePool.view(i),
+                                                               snapPathPool.view(snapPathIndices[i]),
+                                                               snapOrigNamePool.view(i));
+            originalSearchableNames[i] = buildOriginalSearchableNameFromParts(snapNamePool.view(i),
+                                                                              snapPathPool.view(snapPathIndices[i]),
+                                                                              snapOrigNamePool.view(i));
+        }
+        snapSearchableNamePool.loadBulk(searchableNames);
+        snapOriginalSearchableNamePool.loadBulk(originalSearchableNames);
+        for (uint32_t i = 0; i < snapTypes.size(); i++) {
+            if (snapTypes[i] == 0) {
+                snapSearchableNamePool.tombstone(i);
+                snapOriginalSearchableNamePool.tombstone(i);
+            }
+        }
+    }
+    auto aliasMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    t0 = std::chrono::steady_clock::now();
     auto trigramIndex = buildTrigramIndexFromData(snapTypes, snapSearchableNamePool);
     auto trigramMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
@@ -202,7 +249,7 @@ std::string SearchEngine::completePhase2() {
         std::chrono::steady_clock::now() - t0).count();
 
     LOG_INFO("SearchEngine", "Phase 2 build done: snap=" << snapMs
-             << "ms trigram=" << trigramMs << "ms pathTrigram=" << pathTrigramMs
+             << "ms alias=" << aliasMs << "ms trigram=" << trigramMs << "ms pathTrigram=" << pathTrigramMs
              << "ms pathIdx=" << pathIdxMs << "ms recent=" << recentMs
              << "ms ext=" << extMs << "ms");
 
@@ -211,6 +258,10 @@ std::string SearchEngine::completePhase2() {
     {
         std::unique_lock lock(mutex_);
 
+        StringPool liveSearchableNamePool = std::move(searchableNamePool_);
+        StringPool liveOriginalSearchableNamePool = std::move(originalSearchableNamePool_);
+        searchableNamePool_ = std::move(snapSearchableNamePool);
+        originalSearchableNamePool_ = std::move(snapOriginalSearchableNamePool);
         nameTrigramIndex_ = std::move(trigramIndex);
         pathTrigramIndex_ = std::move(pathTrigramIndex);
         pathIdxToRecords_ = std::move(pathIdxToRecords);
@@ -221,10 +272,23 @@ std::string SearchEngine::completePhase2() {
         uint32_t currentSize = static_cast<uint32_t>(types_.size());
         uint32_t replayCount = 0;
         for (uint32_t i = snapSize; i < currentSize; i++) {
-            if (types_[i] == 0) continue;
-            if (i >= searchableNamePool_.entryCount()) searchableNamePool_.append(buildSearchableName(i));
-            if (i >= originalSearchableNamePool_.entryCount()) originalSearchableNamePool_.append(buildOriginalSearchableName(i));
+            if (i < liveSearchableNamePool.entryCount()) {
+                searchableNamePool_.append(liveSearchableNamePool.data(i), liveSearchableNamePool.length(i));
+            } else {
+                searchableNamePool_.append(namePool_.data(i), namePool_.length(i));
+            }
+            if (i < liveOriginalSearchableNamePool.entryCount()) {
+                originalSearchableNamePool_.append(liveOriginalSearchableNamePool.data(i), liveOriginalSearchableNamePool.length(i));
+            } else {
+                originalSearchableNamePool_.append(origNamePool_.data(i), origNamePool_.length(i));
+            }
+            if (types_[i] == 0) {
+                searchableNamePool_.tombstone(i);
+                originalSearchableNamePool_.tombstone(i);
+                continue;
+            }
             addTrigramsForRecord(i, searchableNamePool_.data(i), searchableNamePool_.length(i));
+            ensurePathTrigramsForPathIdx(pathIndices_[i]);
             addPathTrigramsForRecord(i);
             addExtensionForRecord(i);
             addToRecentCache(i, static_cast<time_t>(modTimes_[i]));
@@ -232,11 +296,36 @@ std::string SearchEngine::completePhase2() {
         }
 
         // Replay tombstones: records that were live in snapshot but deleted during build
+        bool replayedSnapshotTombstones = false;
         for (uint32_t i = 0; i < snapSize; i++) {
             if (i >= types_.size()) break;
             if (snapTypes[i] != 0 && types_[i] == 0) {
+                replayedSnapshotTombstones = true;
                 removeTrigramsForRecord(i);
+                removePathTrigramsForRecord(i);
+                if (i < snapNamePool.entryCount() && snapNamePool.isLive(i)) {
+                    std::string ext;
+                    std::string_view name = snapNamePool.view(i);
+                    size_t dot = name.rfind('.');
+                    if (dot != std::string_view::npos && dot + 1 < name.size()) {
+                        ext = std::string(name.substr(dot + 1));
+                    }
+                    auto it = extensionIndex_.find(ext);
+                    if (it != extensionIndex_.end()) {
+                        auto& list = it->second;
+                        auto pos = std::lower_bound(list.begin(), list.end(), i);
+                        if (pos != list.end() && *pos == i) {
+                            list.erase(pos);
+                        }
+                        if (list.empty()) {
+                            extensionIndex_.erase(it);
+                        }
+                    }
+                }
             }
+        }
+        if (replayedSnapshotTombstones) {
+            rebuildRecentCache();
         }
 
         auto replayMs = std::chrono::duration_cast<std::chrono::milliseconds>(

@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
 #include <CoreFoundation/CoreFoundation.h>
 
 std::string SearchEngine::makeFullPath(std::string_view path, std::string_view name) {
@@ -44,36 +45,144 @@ std::string sanitizeSearchAlias(std::string alias) {
     return alias;
 }
 
+std::string readStringFromInfoPlist(CFDictionaryRef info, CFStringRef key) {
+    CFTypeRef value = CFDictionaryGetValue(info, key);
+    if (!value || CFGetTypeID(value) != CFStringGetTypeID()) return {};
+    return cfStringToUtf8(static_cast<CFStringRef>(value));
+}
+
+CFPropertyListRef readPropertyListFile(const std::string& filePath) {
+    CFURLRef url = CFURLCreateFromFileSystemRepresentation(
+        kCFAllocatorDefault,
+        reinterpret_cast<const UInt8*>(filePath.data()),
+        static_cast<CFIndex>(filePath.size()),
+        false);
+    if (!url) return nullptr;
+
+    CFReadStreamRef stream = CFReadStreamCreateWithFile(kCFAllocatorDefault, url);
+    CFRelease(url);
+    if (!stream) return nullptr;
+
+    if (!CFReadStreamOpen(stream)) {
+        CFRelease(stream);
+        return nullptr;
+    }
+
+    CFErrorRef error = nullptr;
+    CFPropertyListRef plist = CFPropertyListCreateWithStream(
+        kCFAllocatorDefault, stream, 0, kCFPropertyListImmutable, nullptr, &error);
+    CFReadStreamClose(stream);
+    CFRelease(stream);
+    if (error) CFRelease(error);
+    return plist;
+}
+
+std::string readDisplayNameFromInfoPlist(const std::string& infoPath) {
+    CFPropertyListRef plist = readPropertyListFile(infoPath);
+    if (!plist) return {};
+
+    if (CFGetTypeID(plist) != CFDictionaryGetTypeID()) {
+        CFRelease(plist);
+        return {};
+    }
+
+    CFDictionaryRef info = static_cast<CFDictionaryRef>(plist);
+    std::string result = readStringFromInfoPlist(info, CFSTR("CFBundleDisplayName"));
+    if (result.empty()) {
+        result = readStringFromInfoPlist(info, kCFBundleNameKey);
+    }
+    CFRelease(plist);
+    return result;
+}
+
+std::string readDisplayNameFromStringsFile(const std::string& stringsPath) {
+    CFPropertyListRef plist = readPropertyListFile(stringsPath);
+    if (!plist) return {};
+    if (CFGetTypeID(plist) != CFDictionaryGetTypeID()) {
+        CFRelease(plist);
+        return {};
+    }
+    CFDictionaryRef info = static_cast<CFDictionaryRef>(plist);
+    std::string result = readStringFromInfoPlist(info, CFSTR("CFBundleDisplayName"));
+    if (result.empty()) {
+        result = readStringFromInfoPlist(info, kCFBundleNameKey);
+    }
+    CFRelease(plist);
+    return result;
+}
+
+std::vector<std::string> preferredLocalizationOrder(const std::vector<std::string>& localizations) {
+    CFMutableArrayRef available = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    if (!available) return localizations;
+
+    for (const auto& localization : localizations) {
+        CFStringRef value = CFStringCreateWithBytes(kCFAllocatorDefault,
+                                                    reinterpret_cast<const UInt8*>(localization.data()),
+                                                    static_cast<CFIndex>(localization.size()),
+                                                    kCFStringEncodingUTF8,
+                                                    false);
+        if (value) {
+            CFArrayAppendValue(available, value);
+            CFRelease(value);
+        }
+    }
+
+    CFArrayRef preferred = CFBundleCopyPreferredLocalizationsFromArray(available);
+    std::vector<std::string> ordered;
+    if (preferred) {
+        CFIndex count = CFArrayGetCount(preferred);
+        ordered.reserve(static_cast<size_t>(count) + localizations.size());
+        for (CFIndex i = 0; i < count; i++) {
+            CFTypeRef value = CFArrayGetValueAtIndex(preferred, i);
+            if (value && CFGetTypeID(value) == CFStringGetTypeID()) {
+                ordered.push_back(cfStringToUtf8(static_cast<CFStringRef>(value)));
+            }
+        }
+        CFRelease(preferred);
+    }
+    CFRelease(available);
+
+    for (const auto& localization : localizations) {
+        if (std::find(ordered.begin(), ordered.end(), localization) == ordered.end()) {
+            ordered.push_back(localization);
+        }
+    }
+    return ordered;
+}
+
+std::string readLocalizedAppDisplayName(const std::string& bundlePath) {
+    std::string resourcesPath = bundlePath + "/Contents/Resources";
+    DIR* dir = opendir(resourcesPath.c_str());
+    if (!dir) return {};
+
+    std::vector<std::string> localizations;
+    while (dirent* entry = readdir(dir)) {
+        std::string name = entry->d_name;
+        if (name.size() <= 6 || name.substr(name.size() - 6) != ".lproj") continue;
+        localizations.push_back(name.substr(0, name.size() - 6));
+    }
+    closedir(dir);
+    std::sort(localizations.begin(), localizations.end());
+
+    for (const auto& localization : preferredLocalizationOrder(localizations)) {
+        std::string result = readDisplayNameFromStringsFile(resourcesPath + "/" + localization + ".lproj/InfoPlist.strings");
+        if (!result.empty()) return result;
+    }
+    return {};
+}
+
 std::string readAppDisplayName(std::string_view path,
                                std::string_view lowerName,
                                std::string_view origName) {
     if (lowerName.size() < 4 || lowerName.substr(lowerName.size() - 4) != ".app") return {};
 
     std::string bundlePath = SearchEngine::makeFullPath(path, origName);
-    CFURLRef url = CFURLCreateFromFileSystemRepresentation(
-        kCFAllocatorDefault,
-        reinterpret_cast<const UInt8*>(bundlePath.data()),
-        static_cast<CFIndex>(bundlePath.size()),
-        true);
-    if (!url) return {};
+    std::string result = readLocalizedAppDisplayName(bundlePath);
+    if (!result.empty()) return result;
 
-    CFBundleRef bundle = CFBundleCreate(kCFAllocatorDefault, url);
-    CFRelease(url);
-    if (!bundle) return {};
-
-    CFStringRef displayNameKey = CFSTR("CFBundleDisplayName");
-    CFTypeRef displayName = CFBundleGetValueForInfoDictionaryKey(bundle, displayNameKey);
-    if (!displayName || CFGetTypeID(displayName) != CFStringGetTypeID()) {
-        displayName = CFBundleGetValueForInfoDictionaryKey(bundle, kCFBundleNameKey);
-    }
-    if (!displayName || CFGetTypeID(displayName) != CFStringGetTypeID()) {
-        CFRelease(bundle);
-        return {};
-    }
-
-    std::string result = cfStringToUtf8(static_cast<CFStringRef>(displayName));
-    CFRelease(bundle);
-    return result;
+    std::string infoPath = bundlePath;
+    infoPath += "/Contents/Info.plist";
+    return readDisplayNameFromInfoPlist(infoPath);
 }
 
 std::string appendSearchAlias(std::string base, std::string alias) {
@@ -85,21 +194,21 @@ std::string appendSearchAlias(std::string base, std::string alias) {
     return base;
 }
 
-std::string makeSearchableName(std::string_view lowerName,
-                               std::string_view path,
-                               std::string_view origName) {
+} // namespace
+
+std::string SearchEngine::buildSearchableNameFromParts(std::string_view lowerName,
+                                                       std::string_view path,
+                                                       std::string_view origName) {
     std::string displayName = readAppDisplayName(path, lowerName, origName);
     return appendSearchAlias(std::string(lowerName), me::toLower(displayName));
 }
 
-std::string makeOriginalSearchableName(std::string_view lowerName,
-                                       std::string_view path,
-                                       std::string_view origName) {
+std::string SearchEngine::buildOriginalSearchableNameFromParts(std::string_view lowerName,
+                                                               std::string_view path,
+                                                               std::string_view origName) {
     std::string displayName = readAppDisplayName(path, lowerName, origName);
     return appendSearchAlias(std::string(origName), std::move(displayName));
 }
-
-} // namespace
 
 uint32_t SearchEngine::internPath(const std::string& path) {
     auto it = pathLookup_.find(path);
@@ -130,20 +239,25 @@ void SearchEngine::tombstoneAt(uint32_t idx) {
 }
 
 std::string SearchEngine::buildSearchableName(uint32_t idx) const {
-    return makeSearchableName(namePool_.view(idx), pathPool_.view(pathIndices_[idx]), origNamePool_.view(idx));
+    return buildSearchableNameFromParts(namePool_.view(idx), pathPool_.view(pathIndices_[idx]), origNamePool_.view(idx));
 }
 
 std::string SearchEngine::buildOriginalSearchableName(uint32_t idx) const {
-    return makeOriginalSearchableName(namePool_.view(idx), pathPool_.view(pathIndices_[idx]), origNamePool_.view(idx));
+    return buildOriginalSearchableNameFromParts(namePool_.view(idx), pathPool_.view(pathIndices_[idx]), origNamePool_.view(idx));
 }
 
-void SearchEngine::rebuildSearchableNamePools() {
+void SearchEngine::rebuildSearchableNamePools(bool includeAliases) {
     std::vector<std::string> names(types_.size());
     std::vector<std::string> originalNames(types_.size());
     for (uint32_t i = 0; i < types_.size(); i++) {
         if (types_[i] == 0) continue;
-        names[i] = buildSearchableName(i);
-        originalNames[i] = buildOriginalSearchableName(i);
+        if (includeAliases) {
+            names[i] = buildSearchableName(i);
+            originalNames[i] = buildOriginalSearchableName(i);
+        } else {
+            names[i] = std::string(namePool_.view(i));
+            originalNames[i] = std::string(origNamePool_.view(i));
+        }
     }
     searchableNamePool_.loadBulk(names);
     originalSearchableNamePool_.loadBulk(originalNames);
@@ -813,9 +927,9 @@ std::unordered_map<uint32_t, uint32_t> SearchEngine::compactRecords() {
         std::vector<std::string> cdSearchableNames(cdTypes.size());
         for (uint32_t i = 0; i < cdTypes.size(); i++) {
             if (cdTypes[i] == 0) continue;
-            cdSearchableNames[i] = makeSearchableName(cdNamePool.view(i),
-                                                       cdPathPool.view(cdPathIndices[i]),
-                                                       cdOrigNamePool.view(i));
+            cdSearchableNames[i] = buildSearchableNameFromParts(cdNamePool.view(i),
+                                                                  cdPathPool.view(cdPathIndices[i]),
+                                                                  cdOrigNamePool.view(i));
         }
         cdSearchableNamePool.loadBulk(cdSearchableNames);
     }
@@ -825,9 +939,9 @@ std::unordered_map<uint32_t, uint32_t> SearchEngine::compactRecords() {
         std::vector<std::string> cdOriginalSearchableNames(cdTypes.size());
         for (uint32_t i = 0; i < cdTypes.size(); i++) {
             if (cdTypes[i] == 0) continue;
-            cdOriginalSearchableNames[i] = makeOriginalSearchableName(cdNamePool.view(i),
-                                                                       cdPathPool.view(cdPathIndices[i]),
-                                                                       cdOrigNamePool.view(i));
+            cdOriginalSearchableNames[i] = buildOriginalSearchableNameFromParts(cdNamePool.view(i),
+                                                                                  cdPathPool.view(cdPathIndices[i]),
+                                                                                  cdOrigNamePool.view(i));
         }
         cdOriginalSearchableNamePool.loadBulk(cdOriginalSearchableNames);
     }

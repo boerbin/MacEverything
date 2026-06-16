@@ -25,7 +25,7 @@ LLAMA_LDFLAGS = -framework Metal -framework MetalKit -framework Accelerate
 CORE_MM_OBJS = $(CORE_MM_SRCS:.mm=.o)
 
 test_all: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
-	$(CXX) $(CXXFLAGS) $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o $@
+	$(CXX) $(CXXFLAGS) -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o $@
 
 benchmark: benchmark.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
 	$(CXX) $(CXXFLAGS) $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o $@
@@ -44,11 +44,11 @@ lint-bridge:
 
 # === Sanitizer targets ===
 test-asan: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
-	$(CXX) -std=c++20 -O1 -g -fsanitize=address -fno-omit-frame-pointer $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o test_all_asan
+	$(CXX) -std=c++20 -O1 -g -fsanitize=address -fno-omit-frame-pointer -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o test_all_asan
 	./test_all_asan --fast
 
 test-tsan: test_all.cpp $(CORE_SRCS) $(CORE_MM_OBJS)
-	$(CXX) -std=c++20 -O1 -g -fsanitize=thread $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o test_all_tsan
+	$(CXX) -std=c++20 -O1 -g -fsanitize=thread -DMACEVERYTHING_TESTING $(RE2_CFLAGS) $(LLAMA_CFLAGS) $(FRAMEWORKS) -IMacEverything/Core $^ $(LLAMA_LIBS) $(RE2_LDFLAGS) $(SQLITE_LDFLAGS) $(LLAMA_LDFLAGS) -o test_all_tsan
 	./test_all_tsan --fast
 
 # === Test targets ===
