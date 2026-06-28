@@ -118,6 +118,7 @@ void ServiceEngine::startFullScan(StartupCallback completion) {
     dispatch_group_async(backgroundGroup_, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         auto scanStart = std::chrono::steady_clock::now();
         auto scanner = std::make_shared<DirectoryScanner>();
+        scanner->setSkipHidden(config_.skipHiddenFiles);
 
         // Progress polling timer
         dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
@@ -350,6 +351,7 @@ void ServiceEngine::backgroundSyncEngine(
         LOG_WARN("ServiceEngine", "FSEvents replay failed — background full scan");
 
         auto scanner = std::make_shared<DirectoryScanner>();
+        scanner->setSkipHidden(config_.skipHiddenFiles);
 
         // Progress reporting
         std::weak_ptr<DirectoryScanner> scannerWeak = scanner;

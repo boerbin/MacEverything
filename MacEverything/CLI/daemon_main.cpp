@@ -30,6 +30,7 @@ struct DaemonOptions {
     std::string root = "/";
     std::string cacheDir;
     std::string logDir;
+    bool skipHidden = true; // matches ServiceConfig::skipHiddenFiles default
 };
 
 static void printUsage(const char* prog) {
@@ -40,6 +41,7 @@ static void printUsage(const char* prog) {
         "  --root PATH       Scan root directory (default: /)\n"
         "  --cache-dir PATH  Cache directory (default: ~/Library/Caches/com.maceverything.app)\n"
         "  --log-dir PATH    Log directory (default: ~/Library/Logs/MacEverything)\n"
+        "  --show-hidden     Index dotfiles and UF_HIDDEN-flagged entries (default: skip)\n"
         "  --help            Show this help\n",
         prog);
 }
@@ -61,6 +63,8 @@ static DaemonOptions parseArgs(int argc, char* argv[]) {
             opts.cacheDir = argv[++i];
         } else if (strcmp(argv[i], "--log-dir") == 0 && i + 1 < argc) {
             opts.logDir = argv[++i];
+        } else if (strcmp(argv[i], "--show-hidden") == 0) {
+            opts.skipHidden = false;
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
             printUsage(argv[0]);
@@ -116,13 +120,15 @@ int main(int argc, char* argv[]) {
     me::Logger::instance().init(opts.logDir, me::LogLevel::Info);
     LOG_INFO("Daemon", "=== MacEverything daemon starting ===");
     LOG_INFO("Daemon", "root=" << opts.root << " port=" << opts.port
-             << " cache=" << opts.cacheDir);
+             << " cache=" << opts.cacheDir
+             << " skipHidden=" << (opts.skipHidden ? "yes" : "no"));
 
     // Create ServiceEngine
     ServiceConfig config;
     config.scanRoot = opts.root;
     config.cachePath = opts.cacheDir;
     config.logPath = opts.logDir;
+    config.skipHiddenFiles = opts.skipHidden;
 
     ServiceEngine engine(config);
     g_engine = &engine;

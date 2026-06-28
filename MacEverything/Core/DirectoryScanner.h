@@ -36,6 +36,9 @@ public:
     };
 
     void scan(const std::string& rootPath);
+    /// Configure whether to skip dotfiles and UF_HIDDEN entries. Default false
+    /// (everything indexed). Set true via ServiceConfig::skipHiddenFiles.
+    void setSkipHidden(bool skip) { skipHidden_ = skip; }
     void cancel() { cancelled_.store(true, std::memory_order_relaxed); }
     bool isCancelled() const { return cancelled_.load(std::memory_order_relaxed); }
     const Stats& getStats() const { return stats_; }
@@ -50,6 +53,7 @@ private:
     std::atomic<int> activeTasks_{0};
     std::atomic<bool> done_{false};
     std::atomic<bool> cancelled_{false};
+    bool skipHidden_ = false;
 
     std::unordered_set<InodeKey, InodeKeyHash> visitedDirs_;
     std::mutex dedupMutex_;

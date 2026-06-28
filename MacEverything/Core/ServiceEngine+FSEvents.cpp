@@ -353,6 +353,7 @@ void ServiceEngine::rescanSubtree(const std::string& dir) {
         const std::string& d = *dirPtr;
 
         auto scanner = std::make_shared<DirectoryScanner>();
+        scanner->setSkipHidden(config_.skipHiddenFiles);
         scanner->scan(d);
         auto freshRecords = scanner->takeResults();
 

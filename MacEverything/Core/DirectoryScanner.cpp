@@ -147,6 +147,7 @@ void DirectoryScanner::scanDirectory(const std::string& dirPath, char* buffer, i
     attrList.bitmapcount = ATTR_BIT_MAP_COUNT;
     attrList.commonattr = ATTR_CMN_RETURNED_ATTRS
                         | ATTR_CMN_NAME
+                        | ATTR_CMN_FLAGS   // for UF_HIDDEN check
                         | ATTR_CMN_ERROR
                         | ATTR_CMN_DEVID
                         | ATTR_CMN_OBJTYPE
@@ -232,6 +233,13 @@ void DirectoryScanner::scanDirectory(const std::string& dirPath, char* buffer, i
                 field += sizeof(uint64_t);
             }
 
+            // 9. Flags (ATTR_CMN_FLAGS = 0x100) — bit 0x8000 = UF_HIDDEN
+            uint32_t cmnflags = 0;
+            if (returned.commonattr & ATTR_CMN_FLAGS) {
+                memcpy(&cmnflags, field, sizeof(uint32_t));
+                field += sizeof(uint32_t);
+            }
+
             // 9. Data length (ATTR_FILE_DATALENGTH = 0x200, file attr, only for VREG)
             off_t datalength = 0;
             if (returned.fileattr & ATTR_FILE_DATALENGTH) {
@@ -254,6 +262,16 @@ void DirectoryScanner::scanDirectory(const std::string& dirPath, char* buffer, i
             if (name[0] == '\0') {
                 entry = nextEntry;
                 continue;
+            }
+
+            // Skip hidden entries when configured:
+            //   - dotfiles/dotdirs (name starts with '.')
+            //   - chflags-hiddens (UF_HIDDEN = 0x8000 in cmnflags)
+            if (skipHidden_) {
+                if (name[0] == '.' || (cmnflags & 0x8000) != 0) {
+                    entry = nextEntry;
+                    continue;
+                }
             }
 
             // Process entry

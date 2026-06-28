@@ -126,6 +126,7 @@ static MEFileResult *makeResult(SearchEngine *engine, uint32_t idx,
         config.cachePath = PathUtils::getDefaultCachePath();
         config.logPath = PathUtils::getDefaultLogPath();
         config.httpPort = 19860;
+        config.skipHiddenFiles = true;  // macOS GUI default — no dotfiles/UF_HIDDEN
         _serviceEngine = std::make_shared<ServiceEngine>(config);
 
         // Pre-install admin callbacks so HttpServer has them when auto-started

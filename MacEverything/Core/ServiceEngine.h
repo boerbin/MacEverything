@@ -29,6 +29,10 @@ struct ServiceConfig {
     /// debounced rescan. Lower = snappier UX; higher = more coalescing of
     /// rapid mount/unmount cycles. Default 5s.
     double mountDebounceSec = 5.0;
+    /// Skip dotfiles and UF_HIDDEN-flagged entries. Default true — most
+    /// users don't want .DS_Store, .git/, .Trash/ in their search.
+    /// Set false only for power users doing filesystem forensics.
+    bool skipHiddenFiles = true;
 };
 
 /// Pure C++ orchestration engine — owns all core objects and lifecycle.
