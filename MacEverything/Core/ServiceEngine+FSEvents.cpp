@@ -341,16 +341,24 @@ void ServiceEngine::rescanSubtree(const std::string& dir) {
     auto engine = safeEngine();
     if (!engine) return;
 
+    // Allocate `dir` on the heap and let the block own the pointer. Without
+    // this, the block would hold a dangling reference once `dir`'s caller's
+    // stack frame (e.g. the local `paths` set inside flushPendingMounts) is
+    // destroyed. This previously caused every rescan inside a tight loop
+    // to receive an empty path, leaving external USB volumes unindexed.
+    std::string* dirHeap = new std::string(dir);
     dispatch_async(mutationQueue_, ^{
+        std::unique_ptr<std::string> dirPtr(dirHeap);
         if (shuttingDown_.load(std::memory_order_relaxed)) return;
+        const std::string& d = *dirPtr;
 
         auto scanner = std::make_shared<DirectoryScanner>();
-        scanner->scan(dir);
+        scanner->scan(d);
         auto freshRecords = scanner->takeResults();
 
         if (shuttingDown_.load(std::memory_order_relaxed)) return;
 
-        engine->batchRescanPrefix(dir, std::move(freshRecords));
+        engine->batchRescanPrefix(d, std::move(freshRecords));
 
         // Compact if tombstones exceed 30%
         uint32_t total = engine->recordCount();
