@@ -72,7 +72,15 @@ struct ResultRow: View {
                     path: item.path, name: item.name, hints: hints,
                     nameFont: .title3, nameColor: .primary,
                     pathFont: .subheadline, pathColor: .secondary)
-                highlighted.nameText.lineLimit(1)
+                HStack(spacing: 4) {
+                    highlighted.nameText.lineLimit(1)
+                    if item.isOffline {
+                        Image(systemName: "externaldrive.badge.exclamationmark")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .help("This file is on a volume that is currently unmounted.")
+                    }
+                }
                 highlighted.pathText.lineLimit(1)
             }
 
@@ -90,13 +98,16 @@ struct ResultRow: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(isHovered ? Color.accentColor.opacity(0.12) : Color.clear)
         )
+        .opacity(item.isOffline ? 0.45 : 1.0)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
         }
         .contextMenu {
             Button("Open") { openFile(item) }
+                .disabled(item.isOffline)
             Button("Reveal in Finder") { revealInFinder(item) }
+                .disabled(item.isOffline)
             Divider()
             Button("Copy Path") { copyPath(item) }
         }

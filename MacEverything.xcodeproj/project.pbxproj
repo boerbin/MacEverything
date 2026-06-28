@@ -9,8 +9,6 @@
 /* Begin PBXBuildFile section */
 		1BD8751A2FF1A107005D6B81 /* VolumeIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1BD875172FF1A107005D6B81 /* VolumeIndex.cpp */; };
 		1BD8751B2FF1A107005D6B81 /* VolumeWatcher.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1BD875192FF1A107005D6B81 /* VolumeWatcher.mm */; };
-		1BD875202FF1A359005D6B81 /* VolumeIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1BD8751D2FF1A359005D6B81 /* VolumeIndex.cpp */; };
-		1BD875212FF1A359005D6B81 /* VolumeWatcher.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1BD8751F2FF1A359005D6B81 /* VolumeWatcher.mm */; };
 		A1000001 /* MacEverythingApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001 /* MacEverythingApp.swift */; };
 		A1000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002 /* AppDelegate.swift */; };
 		A1000003 /* SearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003 /* SearchViewModel.swift */; };
@@ -99,10 +97,6 @@
 		1BD875172FF1A107005D6B81 /* VolumeIndex.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VolumeIndex.cpp; sourceTree = "<group>"; };
 		1BD875182FF1A107005D6B81 /* VolumeWatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VolumeWatcher.h; sourceTree = "<group>"; };
 		1BD875192FF1A107005D6B81 /* VolumeWatcher.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = VolumeWatcher.mm; sourceTree = "<group>"; };
-		1BD8751C2FF1A359005D6B81 /* VolumeIndex.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VolumeIndex.h; sourceTree = "<group>"; };
-		1BD8751D2FF1A359005D6B81 /* VolumeIndex.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VolumeIndex.cpp; sourceTree = "<group>"; };
-		1BD8751E2FF1A359005D6B81 /* VolumeWatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VolumeWatcher.h; sourceTree = "<group>"; };
-		1BD8751F2FF1A359005D6B81 /* VolumeWatcher.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = VolumeWatcher.mm; sourceTree = "<group>"; };
 		A2000001 /* MacEverythingApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacEverythingApp.swift; sourceTree = "<group>"; };
 		A2000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A2000003 /* SearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchViewModel.swift; sourceTree = "<group>"; };
@@ -307,10 +301,6 @@
 				1BD875162FF1A107005D6B81 /* VolumeIndex.h */,
 				1BD875172FF1A107005D6B81 /* VolumeIndex.cpp */,
 				1BD875182FF1A107005D6B81 /* VolumeWatcher.h */,
-				1BD8751C2FF1A359005D6B81 /* VolumeIndex.h */,
-				1BD8751D2FF1A359005D6B81 /* VolumeIndex.cpp */,
-				1BD8751E2FF1A359005D6B81 /* VolumeWatcher.h */,
-				1BD8751F2FF1A359005D6B81 /* VolumeWatcher.mm */,
 				1BD875192FF1A107005D6B81 /* VolumeWatcher.mm */,
 				A2000042 /* SearchEngineStructuredQuery.cpp */,
 				A200003D /* QueryAST.h */,
@@ -509,8 +499,6 @@
 				D1000001 /* MCPConfigManager.swift in Sources */,
 				A1000027 /* QueryParser.cpp in Sources */,
 				A1000028 /* SearchEngineAdvancedQuery.cpp in Sources */,
-				1BD875202FF1A359005D6B81 /* VolumeIndex.cpp in Sources */,
-				1BD875212FF1A359005D6B81 /* VolumeWatcher.mm in Sources */,
 				A1000029 /* SearchEngineStructuredQuery.cpp in Sources */,
 				A100002A /* SearchOptions.swift in Sources */,
 			);

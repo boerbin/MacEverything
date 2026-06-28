@@ -9,6 +9,7 @@ struct FileItem: Identifiable {
     let type: UInt8
     let size: UInt64
     let modTime: time_t
+    let isOffline: Bool // true if record lives on a currently-unmounted volume
 }
 
 struct ContentFileItem: Identifiable {
@@ -41,6 +42,15 @@ class SearchViewModel: ObservableObject {
     @Published var isSyncing: Bool = false
     @Published var ghostSuggestion: String? = nil
 
+    // --- Volume mount lifecycle ---
+    /// One pending mount per debounce window. Set when onVolumeMounted fires,
+    /// cleared when the debounce window expires (the volume's records become
+    /// available). Pair is (mountPath, approximate expiry timestamp).
+    @Published var pendingVolumeMount: (path: String, expiresAt: Date)?
+    /// Volumes the user has unmounted; their records still appear in results
+    /// but ResultRow dims them via FileItem.isOffline.
+    @Published var offlineVolumePaths: Set<String> = []
+
     /// Structured highlight hints extracted from the C++ query AST.
     /// Replaces the old keyword-based approach with field-aware, mode-aware hints.
     var highlightHints: [HighlightHint] {
@@ -64,6 +74,8 @@ class SearchViewModel: ObservableObject {
     private static let pageSize: Int = 100
     private static let maxResults: UInt32 = 10000
     private static let indexChangeThrottleNs: UInt64 = 5_000_000_000 // 5 seconds
+    /// Must match ServiceEngine::kMountDebounceDelaySec.
+    private static let mountDebounceSec: TimeInterval = 30.0
 
     private var indexChangeTask: Task<Void, Never>?
     let refreshThrottle = IndexRefreshThrottle()
@@ -147,6 +159,18 @@ class SearchViewModel: ObservableObject {
         bridge.onIndexChanged = { [weak self] in
             Task { @MainActor in
                 self?.onIndexChanged()
+            }
+        }
+
+        // Volume mount / unmount notifications
+        bridge.onVolumeMounted = { [weak self] path in
+            Task { @MainActor in
+                self?.handleVolumeMounted(path)
+            }
+        }
+        bridge.onVolumeUnmounted = { [weak self] path in
+            Task { @MainActor in
+                self?.handleVolumeUnmounted(path)
             }
         }
 
@@ -288,7 +312,8 @@ class SearchViewModel: ObservableObject {
                 items.append(FileItem(
                     id: "\(r.path)/\(r.name)", index: 0,
                     name: r.name, path: r.path,
-                    type: r.type, size: r.size, modTime: r.modTime
+                    type: r.type, size: r.size, modTime: r.modTime,
+                    isOffline: r.isOffline
                 ))
             }
 
@@ -353,7 +378,8 @@ class SearchViewModel: ObservableObject {
                 newItems.append(FileItem(
                     id: "\(r.path)/\(r.name)", index: 0,
                     name: r.name, path: r.path,
-                    type: r.type, size: r.size, modTime: r.modTime
+                    type: r.type, size: r.size, modTime: r.modTime,
+                    isOffline: r.isOffline
                 ))
             }
 
@@ -383,7 +409,8 @@ class SearchViewModel: ObservableObject {
                 items.append(FileItem(
                     id: "\(r.path)/\(r.name)", index: 0,
                     name: r.name, path: r.path,
-                    type: r.type, size: r.size, modTime: r.modTime
+                    type: r.type, size: r.size, modTime: r.modTime,
+                    isOffline: r.isOffline
                 ))
             }
             await MainActor.run { [weak self] in
@@ -517,5 +544,41 @@ class SearchViewModel: ObservableObject {
         searchText = suggestion
         ghostSuggestion = nil
         historyStore.recordQuery(suggestion)
+    }
+
+    // MARK: - Volume lifecycle
+
+    /// Called when NSWorkspace reports a volume mount. We don't rescan
+    /// immediately — the C++ engine has a 30s debounce. We display a banner
+    /// that auto-clears when the debounce window expires.
+    private func handleVolumeMounted(_ path: String) {
+        let expires = Date().addingTimeInterval(Self.mountDebounceSec)
+        pendingVolumeMount = (path, expires)
+        offlineVolumePaths.remove(path)
+
+        // Schedule a timer to clear the banner when the debounce expires.
+        // The C++ engine will call onIndexChanged when the rescan completes
+        // (which may be earlier or later than 30s).
+        let deadline = Self.mountDebounceSec
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000))
+            // Only clear if the timer hasn't been reset by a newer mount event.
+            if let p = self.pendingVolumeMount,
+               p.path == path && p.expiresAt <= Date() {
+                self.pendingVolumeMount = nil
+            }
+        }
+    }
+
+    private func handleVolumeUnmounted(_ path: String) {
+        pendingVolumeMount = nil
+        offlineVolumePaths.insert(path)
+        // No need to re-search; existing results will show offline dim via
+        // FileItem.isOffline. The user can re-search if they want a clean view.
+    }
+
+    /// User-initiated rescan from menu. Bypasses the 30s debounce.
+    func rescanVolume(_ path: String) {
+        bridge.rescanVolume(path)
     }
 }

@@ -530,22 +530,38 @@ void ServiceEngine::reconcileMountStateOnStartup() {
     auto currentMounts = VolumeWatcher::currentlyMountedLocalVolumes();
     auto persistedOffline = volumeIndex_->offlineVolumePaths();
 
-    // First, register every currently-mounted volume.
+    // Register every currently-mounted volume.
     for (const auto& m : currentMounts) {
         volumeIndex_->addVolume(m);
     }
 
-    // For each persisted offline volume:
-    //  - If it is currently mounted, mark it online (and trigger a rescan).
-    //  - If it is not mounted, keep it offline and registered.
-    for (const auto& p : persistedOffline) {
-        if (std::find(currentMounts.begin(), currentMounts.end(), p) != currentMounts.end()) {
-            LOG_INFO("VolumeWatcher", "Persisted offline volume is mounted again: " << p);
-            volumeIndex_->markOnline(p);
-            handleVolumeMount(p);  // apply 30s debounce + rescan
+    // For every currently-mounted volume, schedule a debounced rescan.
+    // This handles TWO cases the original implementation missed:
+    //   (a) A volume that was offline at last shutdown is now mounted again
+    //       (was handled before).
+    //   (b) A volume was mounted BEFORE the app started and the app has
+    //       never seen it before (was NOT handled — the root scan's
+    //       cross-mount filter skipped /Volumes/*).
+    // The 30s debounce coalesces all of these into a single rescan batch.
+    for (const auto& m : currentMounts) {
+        bool wasPersistedOffline =
+            std::find(persistedOffline.begin(), persistedOffline.end(), m)
+            != persistedOffline.end();
+        if (wasPersistedOffline) {
+            LOG_INFO("VolumeWatcher", "Persisted offline volume is mounted again: " << m);
         } else {
+            LOG_INFO("VolumeWatcher", "Pre-existing mount detected at startup: " << m);
+        }
+        handleVolumeMount(m);  // marks online + schedules 30s debounced rescan
+    }
+
+    // Persisted offline volumes that are NOT currently mounted stay registered
+    // and offline. Their records remain in the index but isRecordOffline()
+    // returns true.
+    for (const auto& p : persistedOffline) {
+        if (std::find(currentMounts.begin(), currentMounts.end(), p) == currentMounts.end()) {
             LOG_INFO("VolumeWatcher", "Persisted offline volume still missing: " << p);
-            volumeIndex_->addVolume(p);  // ensure it's in the path→idx map
+            volumeIndex_->addVolume(p);
             volumeIndex_->markOffline(p);
         }
     }

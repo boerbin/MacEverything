@@ -60,6 +60,33 @@ struct ContentView: View {
 
             Divider()
 
+            // Volume mount banner — shown during the 30s debounce window.
+            if let mount = viewModel.pendingVolumeMount {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Mounted \(mount.path) — indexing in ")
+                        .foregroundColor(.secondary)
+                    // Live countdown timer
+                    MountCountdownText(expiresAt: mount.expiresAt)
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                    Spacer()
+                    Button("Rescan Now") {
+                        viewModel.rescanVolume(mount.path)
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                }
+                .font(.callout)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.15))
+                .accessibilityIdentifier("volumeMountBanner")
+            }
+
+            Divider()
+
             // Status bar
             HStack {
                 if viewModel.isScanning {
@@ -277,5 +304,24 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didDeminiaturizeNotification)) { _ in
             scrollViewID += 1
         }
+    }
+}
+
+/// Live countdown timer shown next to "indexing in Ns" in the volume mount banner.
+struct MountCountdownText: View {
+    let expiresAt: Date
+    @State private var now: Date = Date()
+
+    private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Text(formatted)
+            .onReceive(timer) { now = $0 }
+    }
+
+    private var formatted: String {
+        let remaining = max(0, expiresAt.timeIntervalSince(now))
+        if remaining <= 0 { return "0s" }
+        return "\(Int(ceil(remaining)))s"
     }
 }

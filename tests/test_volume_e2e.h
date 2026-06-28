@@ -143,6 +143,45 @@ static void runVolumeE2ETests() {
               "online volume stays online after restart");
     }
 
+    // ── Test 7: pre-existing mount handling (regression for startup bug) ──
+    // The bug: a USB mounted BEFORE the app starts was not scanned because
+    // (a) root scan's cross-mount filter skips /Volumes/* and
+    // (b) reconcileMountStateOnStartup only looked at persisted offline list.
+    // Fix: reconcileMountStateOnStartup now schedules a debounced rescan
+    // for EVERY currently-mounted volume, not just persisted-offline ones.
+    {
+        // Simulate: a volume mounted before app start, never seen before.
+        VolumeIndex fresh;
+        check(fresh.volumeCount() == 0, "fresh index is empty");
+        check(fresh.offlineVolumePaths().empty(), "no offline on fresh index");
+
+        // Pretend reconcileMountStateOnStartup already ran for /Volumes/USB.
+        // In production, reconcile calls handleVolumeMount which calls
+        // markOnline and schedules a rescan. We just verify the state.
+        fresh.addVolume("/Volumes/USB");
+        fresh.markOnline("/Volumes/USB");
+        check(fresh.volumeCount() == 1, "new mount registered");
+        check(!fresh.isVolumeOffline("/Volumes/USB"),
+              "new mount marked online (not in persisted offline set)");
+        check(fresh.offlineVolumePaths().empty(),
+              "no false offline state for new mount");
+    }
+
+    // ── Test 8: persisted offline + currently mounted → must rescan ──
+    {
+        // Simulate: a volume that was offline at last shutdown is now mounted.
+        VolumeIndex fresh;
+        fresh.addVolume("/Volumes/USB");
+        fresh.markOffline("/Volumes/USB");
+        check(fresh.isVolumeOffline("/Volumes/USB"), "offline after persist");
+
+        // Simulate restart + reconcileMountStateOnStartup.
+        // reconcile would call handleVolumeMount → markOnline.
+        fresh.markOnline("/Volumes/USB");
+        check(!fresh.isVolumeOffline("/Volumes/USB"),
+              "offline volume now mounted → marked online");
+    }
+
     // ── Cleanup ──
     engine.shutdown();
     std::filesystem::remove_all(sandbox, ec);

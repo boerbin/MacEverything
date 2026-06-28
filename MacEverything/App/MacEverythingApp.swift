@@ -30,6 +30,17 @@ struct MacEverythingApp: App {
                 .keyboardShortcut("/", modifiers: [.command, .shift])
             }
 
+            CommandMenu("Volumes") {
+                Button("Rescan Mounted Volumes Now") {
+                    let mounts = MacSearchBridge.shared().knownVolumes()
+                    for path in mounts {
+                        MacSearchBridge.shared().rescanVolume(path)
+                    }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .option, .shift])
+                .disabled(MacSearchBridge.shared().knownVolumes().isEmpty)
+            }
+
             CommandGroup(after: .appSettings) {
                 Button("Rebuild Index") {
                     NotificationCenter.default.post(name: .rebuildIndex, object: nil)
