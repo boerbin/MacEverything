@@ -422,7 +422,7 @@ void ServiceEngine::handleVolumeMount(std::string mountPath) {
 
         mountDebounceTimer_ = dispatch_source_create(
             DISPATCH_SOURCE_TYPE_TIMER, 0, 0, mutationQueue_);
-        uint64_t delaySec = static_cast<uint64_t>(kMountDebounceDelaySec * NSEC_PER_SEC);
+        uint64_t delaySec = static_cast<uint64_t>(config_.mountDebounceSec * NSEC_PER_SEC);
         dispatch_source_set_timer(mountDebounceTimer_,
                                   dispatch_time(DISPATCH_TIME_NOW, delaySec),
                                   DISPATCH_TIME_FOREVER, NSEC_PER_SEC / 10);
@@ -432,7 +432,7 @@ void ServiceEngine::handleVolumeMount(std::string mountPath) {
         dispatch_resume(mountDebounceTimer_);
 
         LOG_INFO("VolumeWatcher", "Debounce: " << pendingMountPaths_.size()
-                 << " pending mount(s), scheduling " << kMountDebounceDelaySec << "s delay");
+                 << " pending mount(s), scheduling " << config_.mountDebounceSec << "s delay");
     });
 }
 

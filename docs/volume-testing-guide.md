@@ -1,6 +1,6 @@
 # Volume Mount 测试指南
 
-本骨架引入了"挂载后 30 秒延迟增量索引"功能。验证按从快到慢分四层：
+本骨架引入了"挂载后 5 秒延迟增量索引"功能（可通过 `ServiceConfig::mountDebounceSec` 调整）。验证按从快到慢分四层：
 
 ---
 
@@ -79,9 +79,9 @@ tail -F /tmp/maceverything-logs/*.log
 
 ```bash
 # 插上 USB 盘（macOS 自动挂载到 /Volumes/<NAME>）
-# 期望日志输出（30 秒内）：
+# 期望日志输出（5 秒内）：
 #   [INFO] [VolumeWatcher] Mount detected: /Volumes/<NAME>
-#   [INFO] [VolumeWatcher] Debounce: 1 pending mount(s), scheduling 30s delay
+#   [INFO] [VolumeWatcher] Debounce: 1 pending mount(s), scheduling 5s delay
 #   [INFO] [VolumeWatcher] Rescanning mounted volume: /Volumes/<NAME>
 #   [INFO] [VolumeWatcher] Started FSEvents watcher for /Volumes/<NAME>
 
@@ -108,7 +108,7 @@ curl -s 'http://127.0.0.1:19860/api/search?q=myfile' | python3 -m json.tool
 # 同一 USB 盘重新插入
 # 期望日志：
 #   [INFO] [VolumeWatcher] Mount detected: /Volumes/<NAME>
-#   ... 30s 后 rescan
+#   ... 5s 后 rescan
 #   离线标记被自动清除
 ```
 
@@ -127,7 +127,7 @@ kill $DAEMON_PID
 # 期望日志：
 #   [INFO] [IndexPersistence] Loaded v6 flat index, ..., offlineVolumes=1
 #   [INFO] [VolumeWatcher] Persisted offline volume is mounted again: /Volumes/<NAME>
-#   [INFO] [VolumeWatcher] Debounce: 1 pending mount(s), scheduling 30s delay
+#   [INFO] [VolumeWatcher] Debounce: 1 pending mount(s), scheduling 5s delay
 ```
 
 > 关键点：上次 offline 的卷如果在重启时已挂载，会被自动标 online 并触发 rescan。
@@ -142,7 +142,7 @@ rm -rf /tmp/maceverything-cache /tmp/maceverything-logs
 
 ---
 
-## 第 4 层：30s 去抖验证（用 fake 抖动模拟）
+## 第 4 层：5s 去抖验证（用 fake 抖动模拟）
 
 ```bash
 # 快速插拔 3 次
@@ -162,7 +162,7 @@ diskutil mount /Volumes/USB
 
 | 场景 | 验证方法 | 预期结果 |
 |------|----------|----------|
-| 单卷挂载 | 第 3 层 | 30s 后日志出现 rescan，搜索可见 |
+| 单卷挂载 | 第 3 层 | 5s 后日志出现 rescan，搜索可见 |
 | 快速抖动 | 第 4 层 | 只 rescan 一次 |
 | 卸载 | 第 3 层 | 记录仍在，offline 标记生效 |
 | 离线状态持久化 | 第 3 层 | 重启后仍记得哪些卷 offline |
@@ -179,7 +179,7 @@ diskutil mount /Volumes/USB
 | SwiftUI UI 渲染 offline 样式 | ❌ 未做 | `MEFileResult.isOffline` 已暴露，UI 一行 dim 即可 |
 | HTTP API 暴露 volume 列表 | ❌ 未做 | 可加 `GET /api/volumes` |
 | MCP 工具 `rescan_volume` | ❌ 未做 | 可加 `maceverything-mcp` tool |
-| 30s 期间用户在 UI 主动 rescan | ❌ 未做 | `rescanVolume:` Bridge 方法已就位 |
+| 5s 期间用户在 UI 主动 rescan | ❌ 未做 | `rescanVolume:` Bridge 方法已就位 |
 | 巨量外部卷（>20 个同时挂载） | ⚠ 未测 | VolumeIndex 内部用 `unordered_map`，O(V) 查询，V 很大时需要换 trie |
 
 ---

@@ -25,6 +25,10 @@ struct ServiceConfig {
     std::string cachePath;   // e.g. ~/Library/Caches/com.maceverything.app
     std::string logPath;     // e.g. ~/Library/Logs/MacEverything
     uint16_t httpPort = 0;   // 0 = no HTTP server; >0 = auto-start after index is ready
+    /// Seconds to wait after a volume mount event before kicking off the
+    /// debounced rescan. Lower = snappier UX; higher = more coalescing of
+    /// rapid mount/unmount cycles. Default 5s.
+    double mountDebounceSec = 5.0;
 };
 
 /// Pure C++ orchestration engine — owns all core objects and lifecycle.
@@ -187,6 +191,9 @@ private:
     // ── Constants ──
     static constexpr double kRescanDebounceDelaySec = 5.0;
     static constexpr double kRescanThrottleIntervalSec = 300.0;
-    static constexpr double kMountDebounceDelaySec = 30.0;
+    /// Default mount debounce if ServiceConfig doesn't override it.
+    /// Kept here for the in-process startup paths that don't go through
+    /// ServiceConfig (tests, fallbacks).
+    static constexpr double kMountDebounceDefaultSec = 5.0;
     static constexpr const char* kAppVersion = "1.1.0";
 };

@@ -74,8 +74,8 @@ class SearchViewModel: ObservableObject {
     private static let pageSize: Int = 100
     private static let maxResults: UInt32 = 10000
     private static let indexChangeThrottleNs: UInt64 = 5_000_000_000 // 5 seconds
-    /// Must match ServiceEngine::kMountDebounceDelaySec.
-    private static let mountDebounceSec: TimeInterval = 30.0
+    /// Must match ServiceConfig::mountDebounceSec (default).
+    private static let mountDebounceSec: TimeInterval = 5.0
 
     private var indexChangeTask: Task<Void, Never>?
     let refreshThrottle = IndexRefreshThrottle()
