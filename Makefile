@@ -1,7 +1,9 @@
 CXX = clang++
 CXXFLAGS = -std=c++20 -O2 -Wall -Wextra
-FRAMEWORKS = -framework CoreServices
-CORE_SRCS = $(wildcard MacEverything/Core/*.cpp)
+FRAMEWORKS = -framework CoreServices -framework AppKit -framework Foundation
+CORE_CPPSRCS = $(wildcard MacEverything/Core/*.cpp)
+CORE_MMSRCS = $(wildcard MacEverything/Core/*.mm)
+CORE_SRCS = $(CORE_CPPSRCS) $(CORE_MMSRCS)
 RE2_PREFIX = /opt/homebrew/opt/re2
 RE2_CFLAGS = -I$(RE2_PREFIX)/include
 RE2_LDFLAGS = -L$(RE2_PREFIX)/lib -lre2
@@ -27,6 +29,10 @@ lint-bridge:
 		MacEverything/Bridge/MacSearchBridge.mm \
 		MacEverything/Bridge/MacSearchBridge+Content.mm
 
+lint-core-objc: $(CORE_MMSRCS)
+	$(CXX) $(CXXFLAGS) -fsyntax-only -fobjc-arc -x objective-c++ \
+		-IMacEverything/Core $(CORE_MMSRCS)
+
 # === Sanitizer targets ===
 test-asan: test_all.cpp $(CORE_SRCS)
 	$(CXX) -std=c++20 -O1 -g -fsanitize=address -fno-omit-frame-pointer $(RE2_CFLAGS) $(FRAMEWORKS) $(RE2_LDFLAGS) -IMacEverything/Core $^ -o test_all_asan
@@ -39,7 +45,7 @@ test-tsan: test_all.cpp $(CORE_SRCS)
 # === Test targets ===
 test: test-fast
 
-test-fast: test_all lint-bridge
+test-fast: test_all lint-bridge lint-core-objc
 	./test_all --fast
 
 test-slow: test_all

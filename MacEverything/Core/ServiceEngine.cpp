@@ -17,9 +17,14 @@ ServiceEngine::ServiceEngine(const ServiceConfig& config)
     engine_ = std::make_shared<SearchEngine>();
     watcher_ = std::make_shared<FileSystemWatcher>("live");
     contentIndex_ = std::make_shared<ContentIndex>();
+    volumeIndex_ = std::make_shared<VolumeIndex>();
+    volumeWatcher_ = std::make_shared<VolumeWatcher>();
     mutationQueue_ = dispatch_queue_create("com.maceverything.mutation", DISPATCH_QUEUE_SERIAL);
     backgroundGroup_ = dispatch_group_create();
     contentIndexingSemaphore_ = dispatch_semaphore_create(0);
+
+    // Wire the volume index into the search engine so isRecordOffline() works.
+    engine_->attachVolumeIndex(volumeIndex_.get());
 }
 
 ServiceEngine::~ServiceEngine() {
@@ -38,6 +43,10 @@ std::shared_ptr<SearchEngine> ServiceEngine::safeEngine() {
 void ServiceEngine::setEngine(std::shared_ptr<SearchEngine> engine) {
     std::unique_lock lock(engineMutex_);
     engine_ = engine;
+    // Re-attach the volume index so isRecordOffline() works on the new engine.
+    if (engine_ && volumeIndex_) {
+        engine_->attachVolumeIndex(volumeIndex_.get());
+    }
 }
 
 std::shared_ptr<ContentIndex> ServiceEngine::safeContentIndex() {
@@ -90,6 +99,9 @@ IndexMetadata ServiceEngine::buildMetadata() {
     meta.extra[IndexMetadata::kAppVersion] = kAppVersion;
     meta.extra[IndexMetadata::kRecordFormat] = "v6_flat";
     meta.extra[IndexMetadata::kOSVersion] = PathUtils::getOSVersionString();
+    if (volumeIndex_) {
+        meta.offlineVolumes = volumeIndex_->offlineVolumePaths();
+    }
     return meta;
 }
 
@@ -187,7 +199,15 @@ void ServiceEngine::startIncremental(StartupCallback completion) {
         auto persistence = std::make_unique<IndexPersistence>(
             engine, cacheStr, walStr, pagesStr, ptableStr, v6Str);
 
-        uint64_t lastEventId = persistence->load();
+        IndexMetadata loadedMeta;
+        uint64_t lastEventId = persistence->loadWithMetadata(loadedMeta);
+
+        // Hydrate the volume index with persisted offline volumes BEFORE
+        // reconcileMountStateOnStartup runs (called later via startMonitoring).
+        if (volumeIndex_ && !loadedMeta.offlineVolumes.empty()) {
+            volumeIndex_->loadOfflineVolumes(loadedMeta.offlineVolumes);
+        }
+
         auto indexLoadDone = std::chrono::steady_clock::now();
         uint32_t loadedCount = engine->liveRecordCount();
 
@@ -452,6 +472,7 @@ void ServiceEngine::shutdown() {
     }
 
     stopHttpServer();
+    stopVolumeWatcher();
     LOG_INFO("ServiceEngine", "shutdown started");
 
     cancelContentIndexing_.store(true, std::memory_order_relaxed);

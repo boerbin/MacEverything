@@ -7,10 +7,13 @@
 #include "HttpServer.h"
 #include "InstanceLock.h"
 #include "RescanDebounce.h"
+#include "VolumeIndex.h"
+#include "VolumeWatcher.h"
 #include <memory>
 #include <atomic>
 #include <shared_mutex>
 #include <set>
+#include <unordered_map>
 #include <chrono>
 #include <functional>
 #include <string>
@@ -75,6 +78,18 @@ public:
     ContentProgressCallback onContentIndexProgress;
     ContentCompleteCallback onContentIndexComplete;
 
+    // ── Volume mount lifecycle (optional UI hooks) ──
+    using VolumeMountCallback = std::function<void(const std::string& mountPath)>;
+    using VolumeUnmountCallback = std::function<void(const std::string& mountPath)>;
+    VolumeMountCallback onVolumeMounted;
+    VolumeUnmountCallback onVolumeUnmounted;
+
+    // ── Public volume accessors ──
+    std::shared_ptr<VolumeIndex> safeVolumeIndex() { return volumeIndex_; }
+    /// Manually trigger a rescan of a volume mount point.
+    /// Skips the debounce window (useful for HTTP admin endpoints).
+    void rescanVolumeNow(const std::string& mountPath);
+
     // ── Admin callbacks for HttpServer ──
     HttpServer::AdminCallbacks adminCallbacks;
 
@@ -98,6 +113,16 @@ private:
     void scheduleRescanForPaths(const std::vector<std::string>& paths);
     void flushPendingRescans();
 
+    // ── Volume mount handling (ServiceEngine+FSEvents.cpp) ──
+    void startVolumeWatcher();
+    void stopVolumeWatcher();
+    void handleVolumeMount(std::string mountPath);
+    void handleVolumeUnmount(std::string mountPath);
+    void flushPendingMounts();
+    void startWatcherForVolume(const std::string& mountPath);
+    void stopWatcherForVolume(const std::string& mountPath);
+    void reconcileMountStateOnStartup();
+
     // ── Content methods (ServiceEngine+Content.cpp) ──
     void startContentIndexing();
     void setupContentPersistence();
@@ -119,6 +144,12 @@ private:
     std::shared_ptr<ContentIndexPersistence> contentPersistence_;
     std::shared_ptr<HttpServer> httpServer_;
     InstanceLock instanceLock_;
+
+    // ── Volume tracking ──
+    std::shared_ptr<VolumeIndex> volumeIndex_;
+    std::shared_ptr<VolumeWatcher> volumeWatcher_;
+    // One FileSystemWatcher per mounted volume, keyed by canonical mount path.
+    std::unordered_map<std::string, std::shared_ptr<FileSystemWatcher>> volumeWatchers_;
 
     // ── Thread safety ──
     std::shared_mutex engineMutex_;
@@ -147,8 +178,15 @@ private:
     dispatch_source_t rescanDebounceTimer_ = nullptr;
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> lastRescanTime_;
 
+    // ── Volume mount debounce state ──
+    std::mutex pendingMountMutex_;
+    std::set<std::string> pendingMountPaths_;
+    dispatch_source_t mountDebounceTimer_ = nullptr;
+    std::mutex volumeWatchersMutex_;
+
     // ── Constants ──
     static constexpr double kRescanDebounceDelaySec = 5.0;
     static constexpr double kRescanThrottleIntervalSec = 300.0;
+    static constexpr double kMountDebounceDelaySec = 30.0;
     static constexpr const char* kAppVersion = "1.1.0";
 };

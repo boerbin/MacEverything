@@ -28,7 +28,13 @@ IndexPersistence::~IndexPersistence() {
 }
 
 uint64_t IndexPersistence::load() {
+    IndexMetadata unused;
+    return loadWithMetadata(unused);
+}
+
+uint64_t IndexPersistence::loadWithMetadata(IndexMetadata& outMeta) {
     uint64_t lastEventId = 0;
+    outMeta = IndexMetadata{};
 
     // 1. Try v6 flat SoA format first (fast path)
     bool loaded = false;
@@ -37,8 +43,10 @@ uint64_t IndexPersistence::load() {
         loaded = flatWriter_->load(*engine_, &meta);
         if (loaded) {
             lastEventId = meta.lastEventId;
+            outMeta = std::move(meta);
             LOG_INFO("IndexPersistence", "Loaded v6 flat index, lastEventId=" << lastEventId
-                      << ", liveRecords=" << engine_->liveRecordCount());
+                      << ", liveRecords=" << engine_->liveRecordCount()
+                      << ", offlineVolumes=" << outMeta.offlineVolumes.size());
         } else {
             LOG_ERROR("IndexPersistence", "v6 flat index corrupt, trying paged format");
         }
@@ -50,11 +58,13 @@ uint64_t IndexPersistence::load() {
         loaded = pagedWriter_->load(*engine_, &meta);
         if (loaded) {
             lastEventId = meta.lastEventId;
+            outMeta = std::move(meta);
             LOG_INFO("IndexPersistence", "Loaded paged index, lastEventId=" << lastEventId
                       << ", liveRecords=" << engine_->liveRecordCount());
             // Auto-migrate to v6 flat format
             IndexMetadata migrateMeta;
             migrateMeta.lastEventId = lastEventId;
+            migrateMeta.offlineVolumes = outMeta.offlineVolumes;
             if (flatWriter_->fullRewrite(*engine_, migrateMeta)) {
                 LOG_INFO("IndexPersistence", "Migrated paged index to v6 flat format");
             }
@@ -69,7 +79,7 @@ uint64_t IndexPersistence::load() {
         if (loaded) {
             LOG_INFO("IndexPersistence", "Loaded legacy index, lastEventId=" << lastEventId
                       << ", liveRecords=" << engine_->liveRecordCount());
-            // Auto-migrate to v6 flat format
+            // Auto-migrate to v6 flat format (no offline volume info in v3)
             IndexMetadata migrateMeta;
             migrateMeta.lastEventId = lastEventId;
             if (flatWriter_->fullRewrite(*engine_, migrateMeta)) {
@@ -80,7 +90,7 @@ uint64_t IndexPersistence::load() {
         }
     }
 
-    // 3. In-place WAL replay using pathIndex_ for O(1) lookups
+    // 4. In-place WAL replay using pathIndex_ for O(1) lookups
     auto entries = IndexWAL::readAll(walPath_);
     if (!entries.empty()) {
         LOG_INFO("IndexPersistence", "Replaying " << entries.size() << " WAL entries (in-place mode)");

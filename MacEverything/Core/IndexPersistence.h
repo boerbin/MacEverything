@@ -30,6 +30,12 @@ public:
     /// Returns the lastEventId from the base file (0 if no file or v1 format).
     uint64_t load();
 
+    /// Same as load() but also returns the loaded IndexMetadata (including
+    /// offlineVolumes, scanRoot, etc). The metadata is filled even when
+    /// the load() of records fails — callers can still inspect what was
+    /// persisted.
+    uint64_t loadWithMetadata(IndexMetadata& outMeta);
+
     /// Start logging mutations to WAL.
     void attachWAL();
 

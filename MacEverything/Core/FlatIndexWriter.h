@@ -48,7 +48,8 @@ public:
     static constexpr uint32_t kSectionInodes         = 9;
     static constexpr uint32_t kSectionDevIds         = 10;
     static constexpr uint32_t kSectionMetadataKV     = 11;
-    static constexpr uint32_t kSectionCount          = 11;
+    static constexpr uint32_t kSectionOfflineVolumes = 12;
+    static constexpr uint32_t kSectionCount          = 12;
 
 private:
     std::string path_;
@@ -95,4 +96,14 @@ private:
 
     /// Read metadata key-value pairs from buffer
     static bool readMetadataSection(const uint8_t* data, size_t len, IndexMetadata& meta);
+
+    /// Write offline-volume list section. Empty list produces an empty
+    /// section (no bytes). CRC of an empty section is 0.
+    static bool writeOfflineVolumesSection(FILE* f,
+                                            const std::vector<std::string>& volumes,
+                                            uint32_t& outSize, uint32_t& outCRC);
+
+    /// Read offline-volume list section. Tolerates a zero-length section.
+    static bool readOfflineVolumesSection(const uint8_t* data, size_t len,
+                                           std::vector<std::string>& volumes);
 };

@@ -4,6 +4,8 @@
 #include "StringPool.h"
 #include "SIMDSearch.h"
 #include <vector>
+
+class VolumeIndex; // forward-declared; full include is in the .cpp
 #include <string>
 #include <string_view>
 #include <cstdint>
@@ -66,6 +68,11 @@ struct IndexMetadata {
     int64_t  timestamp = 0;     // creation timestamp (seconds since epoch)
     uint64_t lastEventId = 0;   // FSEvents stream ID for incremental replay
     std::map<std::string, std::string> extra; // extensible key-value pairs
+
+    /// Volume mount points that were offline at the time the index was last saved.
+    /// On startup, persisted-offline volumes that are now mounted are auto-marked
+    /// online and re-scanned; volumes that are still missing stay offline.
+    std::vector<std::string> offlineVolumes;
 
     // Well-known metadata keys
     static constexpr const char* kScanRoot     = "scan_root";      // e.g. "/"
@@ -272,6 +279,16 @@ public:
 
     /// Export a copy of all live records with their paths restored. Thread-safe.
     std::vector<FileRecord> exportRecords() const;
+
+    // --- Volume offline integration (public) ---
+    // Called by ServiceEngine. Weak pointer — VolumeIndex is owned by caller.
+    void attachVolumeIndex(class VolumeIndex* volIdx) { volumeIndex_ = volIdx; }
+    void detachVolumeIndex() { volumeIndex_ = nullptr; }
+
+    /// Whether the record at the given index is on an offline volume.
+    /// Returns false if no VolumeIndex is attached or the record is on
+    /// the root volume.
+    bool isRecordOffline(uint32_t index) const;
 
     /// Build the full path from a record's path and name components.
     static std::string makeFullPath(std::string_view path, std::string_view name);
@@ -570,4 +587,9 @@ private:
         buildRecentCacheFromData(const std::vector<uint8_t>& types,
                                  const std::vector<int64_t>& modTimes,
                                  uint32_t cacheSize);
+
+    // Weak pointer to ServiceEngine's VolumeIndex. Not owned; lifetime is
+    // managed by the caller. nullptr is a valid state (means: no offline
+    // tracking — the default before ServiceEngine wires it up).
+    class VolumeIndex* volumeIndex_ = nullptr;
 };

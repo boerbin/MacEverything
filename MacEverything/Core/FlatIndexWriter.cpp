@@ -87,6 +87,60 @@ bool FlatIndexWriter::writeArraySection(FILE* f, const std::vector<T>& vec,
 }
 
 // ---------------------------------------------------------------------------
+// Offline volumes section helpers
+// ---------------------------------------------------------------------------
+
+bool FlatIndexWriter::writeOfflineVolumesSection(FILE* f,
+                                                  const std::vector<std::string>& volumes,
+                                                  uint32_t& outSize, uint32_t& outCRC) {
+    long startPos = ftell(f);
+
+    uint32_t count = static_cast<uint32_t>(volumes.size());
+    if (fwrite(&count, sizeof(uint32_t), 1, f) != 1) return false;
+
+    for (const auto& v : volumes) {
+        uint32_t vLen = static_cast<uint32_t>(v.size());
+        if (fwrite(&vLen, sizeof(uint32_t), 1, f) != 1) return false;
+        if (vLen > 0 && fwrite(v.data(), 1, vLen, f) != vLen) return false;
+    }
+
+    long endPos = ftell(f);
+    outSize = static_cast<uint32_t>(endPos - startPos);
+
+    if (outSize == 0) { outCRC = 0; return true; }
+
+    std::vector<uint8_t> buf(outSize);
+    fseek(f, startPos, SEEK_SET);
+    if (fread(buf.data(), 1, outSize, f) != outSize) return false;
+    outCRC = IndexWAL::crc32(buf.data(), outSize);
+    fseek(f, endPos, SEEK_SET);
+    return true;
+}
+
+bool FlatIndexWriter::readOfflineVolumesSection(const uint8_t* data, size_t len,
+                                                 std::vector<std::string>& volumes) {
+    if (len < sizeof(uint32_t)) return false;
+    size_t pos = 0;
+
+    uint32_t count;
+    memcpy(&count, data + pos, sizeof(uint32_t));
+    pos += sizeof(uint32_t);
+
+    volumes.clear();
+    volumes.reserve(count);
+    for (uint32_t i = 0; i < count; i++) {
+        if (pos + sizeof(uint32_t) > len) return false;
+        uint32_t vLen;
+        memcpy(&vLen, data + pos, sizeof(uint32_t));
+        pos += sizeof(uint32_t);
+        if (pos + vLen > len) return false;
+        volumes.emplace_back(reinterpret_cast<const char*>(data + pos), vLen);
+        pos += vLen;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Metadata section helpers
 // ---------------------------------------------------------------------------
 
@@ -285,6 +339,14 @@ bool FlatIndexWriter::fullRewrite(SearchEngine& engine, const IndexMetadata& met
         uint32_t size, crc;
         ok = ok && writeMetadataSection(f, meta, size, crc);
         fillSection(10, kSectionMetadataKV, offset, size, crc);
+    }
+
+    // Section 12: OFFLINE_VOLUMES
+    {
+        uint64_t offset = static_cast<uint64_t>(ftell(f));
+        uint32_t size, crc;
+        ok = ok && writeOfflineVolumesSection(f, meta.offlineVolumes, size, crc);
+        fillSection(11, kSectionOfflineVolumes, offset, size, crc);
     }
 
     if (!ok) {
@@ -505,6 +567,14 @@ bool FlatIndexWriter::load(SearchEngine& engine, IndexMetadata* outMeta) {
         std::vector<uint8_t> metaRaw;
         if (readSectionRaw(kSectionMetadataKV, metaRaw)) {
             readMetadataSection(metaRaw.data(), metaRaw.size(), meta);
+        }
+    }
+
+    // Offline volumes (optional, v6+ extension)
+    if (sectionIdx[kSectionOfflineVolumes] != 0xFFFFFFFF) {
+        std::vector<uint8_t> offRaw;
+        if (readSectionRaw(kSectionOfflineVolumes, offRaw)) {
+            readOfflineVolumesSection(offRaw.data(), offRaw.size(), meta.offlineVolumes);
         }
     }
 

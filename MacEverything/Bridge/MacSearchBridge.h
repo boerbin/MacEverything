@@ -9,11 +9,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) uint8_t type;      // 1=file, 2=dir, 3=symlink, 4=other
 @property (nonatomic, readonly) uint64_t size;
 @property (nonatomic, readonly) time_t modTime;
+@property (nonatomic, readonly) BOOL isOffline;    // YES if record lives on an unmounted volume
 - (instancetype)initWithName:(NSString *)name
                         path:(NSString *)path
                         type:(uint8_t)type
                         size:(uint64_t)size
-                     modTime:(time_t)modTime;
+                     modTime:(time_t)modTime
+                    isOffline:(BOOL)isOffline;
 @end
 
 /// Lightweight wrapper exposing a content search result to Swift.
@@ -113,6 +115,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// Rescan a directory subtree and update the index incrementally.
 - (void)rescanSubtree:(NSString *)dirPath;
 
+/// Manually trigger an immediate rescan of a volume mount point.
+/// Skips the 30s mount debounce. Used by HTTP admin endpoints.
+- (void)rescanVolume:(NSString *)mountPath;
+
+/// List all currently known volume mount points the engine is tracking.
+- (NSArray<NSString *> *)knownVolumes;
+
+/// Whether a given mount path is currently marked offline.
+- (BOOL)isVolumeOffline:(NSString *)mountPath;
+
 /// Whether a scan is currently in progress.
 @property (nonatomic, readonly) BOOL isScanning;
 
@@ -152,6 +164,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Called on the main queue when content indexing completes.
 @property (nonatomic, copy, nullable) void (^onContentIndexComplete)(uint32_t totalIndexed);
+
+/// Called on the main queue when a volume is mounted and the engine
+/// begins a delayed incremental index of it.
+@property (nonatomic, copy, nullable) void (^onVolumeMounted)(NSString *mountPath);
+
+/// Called on the main queue when a volume is unmounted. The index
+/// keeps the records but marks them offline.
+@property (nonatomic, copy, nullable) void (^onVolumeUnmounted)(NSString *mountPath);
 
 @end
 

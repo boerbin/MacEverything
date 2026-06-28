@@ -1,6 +1,7 @@
 #include "SearchEngine.h"
 #include "StringUtils.h"
 #include "IndexWAL.h"
+#include "VolumeIndex.h"
 #include "Logger.h"
 #include <algorithm>
 #include <thread>
@@ -953,4 +954,15 @@ void SearchEngine::replayWALEntries(std::vector<WALEntry>&& entries) {
     }
 
     rebuildRecentCache();
+}
+
+bool SearchEngine::isRecordOffline(uint32_t index) const {
+    if (!volumeIndex_) return false;
+    std::shared_lock lock(mutex_);
+    if (index >= types_.size() || types_[index] == 0) return false;
+    // Build full path = parent path + "/" + name
+    std::string fullPath = makeFullPath(
+        pathPool_.str(pathIndices_[index]),
+        origNamePool_.str(index));
+    return volumeIndex_->isRecordOffline(fullPath);
 }

@@ -8,6 +8,7 @@ maceverything-daemon
 
 # Xcode
 *.xcuserdata
+xcuserdata/
 DerivedData/
 
 # Index cache

@@ -10,7 +10,8 @@
                         path:(NSString *)path
                         type:(uint8_t)type
                         size:(uint64_t)size
-                     modTime:(time_t)modTime {
+                     modTime:(time_t)modTime
+                    isOffline:(BOOL)isOffline {
     self = [super init];
     if (self) {
         _name = [name copy];
@@ -18,11 +19,28 @@
         _type = type;
         _size = size;
         _modTime = modTime;
+        _isOffline = isOffline;
     }
     return self;
 }
 
 @end
+
+// Helper: construct an MEFileResult from engine state.
+// Returns nil if the strings fail to encode.
+static MEFileResult *makeResult(SearchEngine *engine, uint32_t idx,
+                                 const FileRecord& r, const std::string& path) {
+    NSString *nsName = [NSString stringWithUTF8String:r.name.c_str()];
+    NSString *nsPath = [NSString stringWithUTF8String:path.c_str()];
+    if (!nsName || !nsPath) return nil;
+    BOOL offline = engine ? (engine->isRecordOffline(idx) ? YES : NO) : NO;
+    return [[MEFileResult alloc] initWithName:nsName
+                                         path:nsPath
+                                         type:r.type
+                                         size:r.size
+                                      modTime:r.modTime
+                                    isOffline:offline];
+}
 
 @implementation MEContentResult
 
@@ -167,6 +185,22 @@
             if (s.onContentIndexComplete) s.onContentIndexComplete(totalIndexed);
         });
     };
+    _serviceEngine->onVolumeMounted = [weakSelf](const std::string& mountPath) {
+        MacSearchBridge *s = weakSelf;
+        if (!s) return;
+        NSString *p = [NSString stringWithUTF8String:mountPath.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (s.onVolumeMounted) s.onVolumeMounted(p);
+        });
+    };
+    _serviceEngine->onVolumeUnmounted = [weakSelf](const std::string& mountPath) {
+        MacSearchBridge *s = weakSelf;
+        if (!s) return;
+        NSString *p = [NSString stringWithUTF8String:mountPath.c_str()];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (s.onVolumeUnmounted) s.onVolumeUnmounted(p);
+        });
+    };
 }
 
 - (void)startScanFrom:(NSString *)rootPath
@@ -270,6 +304,28 @@
     _serviceEngine->rescanSubtree(std::string([dirPath UTF8String]));
 }
 
+- (void)rescanVolume:(NSString *)mountPath {
+    _serviceEngine->rescanVolumeNow(std::string([mountPath UTF8String]));
+}
+
+- (NSArray<NSString *> *)knownVolumes {
+    auto vi = _serviceEngine->safeVolumeIndex();
+    if (!vi) return @[];
+    auto paths = vi->allVolumePaths();
+    NSMutableArray<NSString *> *out = [NSMutableArray arrayWithCapacity:paths.size()];
+    for (const auto& p : paths) {
+        NSString *s = [NSString stringWithUTF8String:p.c_str()];
+        if (s) [out addObject:s];
+    }
+    return out;
+}
+
+- (BOOL)isVolumeOffline:(NSString *)mountPath {
+    auto vi = _serviceEngine->safeVolumeIndex();
+    if (!vi) return NO;
+    return vi->isVolumeOffline(std::string([mountPath UTF8String])) ? YES : NO;
+}
+
 // ═══════════════════════════════════════════════════════
 //  Query methods — type conversion layer
 // ═══════════════════════════════════════════════════════
@@ -300,15 +356,9 @@
     }
 
     NSMutableArray<MEFileResult *> *results = [NSMutableArray arrayWithCapacity:indices.count];
-    engine->forEachRecordWithPath(idxVec, [&](uint32_t, const FileRecord& r, const std::string& path) {
-        NSString *nsName = [NSString stringWithUTF8String:r.name.c_str()];
-        NSString *nsPath = [NSString stringWithUTF8String:path.c_str()];
-        if (!nsName || !nsPath) return;
-        [results addObject:[[MEFileResult alloc] initWithName:nsName
-                                                        path:nsPath
-                                                        type:r.type
-                                                        size:r.size
-                                                     modTime:r.modTime]];
+    engine->forEachRecordWithPath(idxVec, [&](uint32_t idx, const FileRecord& r, const std::string& path) {
+        MEFileResult *fr = makeResult(engine.get(), idx, r, path);
+        if (fr) [results addObject:fr];
     });
     return results;
 }
@@ -336,15 +386,9 @@
     if (indices.empty()) return @[];
 
     NSMutableArray<MEFileResult *> *results = [NSMutableArray arrayWithCapacity:indices.size()];
-    engine->forEachRecordWithPath(indices, [&](uint32_t, const FileRecord& r, const std::string& path) {
-        NSString *nsName = [NSString stringWithUTF8String:r.name.c_str()];
-        NSString *nsPath = [NSString stringWithUTF8String:path.c_str()];
-        if (!nsName || !nsPath) return;
-        [results addObject:[[MEFileResult alloc] initWithName:nsName
-                                                        path:nsPath
-                                                        type:r.type
-                                                        size:r.size
-                                                     modTime:r.modTime]];
+    engine->forEachRecordWithPath(indices, [&](uint32_t idx, const FileRecord& r, const std::string& path) {
+        MEFileResult *fr = makeResult(engine.get(), idx, r, path);
+        if (fr) [results addObject:fr];
     });
     return results;
 }
@@ -360,15 +404,9 @@
     if (indices.empty()) return @[];
 
     NSMutableArray<MEFileResult *> *results = [NSMutableArray arrayWithCapacity:indices.size()];
-    engine->forEachRecordWithPath(indices, [&](uint32_t, const FileRecord& r, const std::string& path) {
-        NSString *nsName = [NSString stringWithUTF8String:r.name.c_str()];
-        NSString *nsPath = [NSString stringWithUTF8String:path.c_str()];
-        if (!nsName || !nsPath) return;
-        [results addObject:[[MEFileResult alloc] initWithName:nsName
-                                                        path:nsPath
-                                                        type:r.type
-                                                        size:r.size
-                                                     modTime:r.modTime]];
+    engine->forEachRecordWithPath(indices, [&](uint32_t idx, const FileRecord& r, const std::string& path) {
+        MEFileResult *fr = makeResult(engine.get(), idx, r, path);
+        if (fr) [results addObject:fr];
     });
     return results;
 }
@@ -387,15 +425,9 @@
     if (indices.empty()) return @[];
 
     NSMutableArray<MEFileResult *> *results = [NSMutableArray arrayWithCapacity:indices.size()];
-    engine->forEachRecordWithPath(indices, [&](uint32_t, const FileRecord& r, const std::string& path) {
-        NSString *nsName = [NSString stringWithUTF8String:r.name.c_str()];
-        NSString *nsPath = [NSString stringWithUTF8String:path.c_str()];
-        if (!nsName || !nsPath) return;
-        [results addObject:[[MEFileResult alloc] initWithName:nsName
-                                                        path:nsPath
-                                                        type:r.type
-                                                        size:r.size
-                                                     modTime:r.modTime]];
+    engine->forEachRecordWithPath(indices, [&](uint32_t idx, const FileRecord& r, const std::string& path) {
+        MEFileResult *fr = makeResult(engine.get(), idx, r, path);
+        if (fr) [results addObject:fr];
     });
     return results;
 }
